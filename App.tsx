@@ -1,5 +1,4 @@
 
-
 import React, { useState } from 'react';
 import { Layout } from './components/Layout';
 import { PromptBuilder } from './components/PromptBuilder';
@@ -14,14 +13,16 @@ import { Workflow, PromptResponse, Template, WorkflowNode, RunLog } from './type
 import { Check, Plus, Loader2, RotateCcw } from 'lucide-react';
 import { executeWorkflow } from './lib/workflowEngine';
 import { AutomatorProvider, useAutomator } from './store/AutomatorContext';
+import { ToastProvider, useToast } from './store/ToastContext';
 
-function AutomatorApp() {
+function AutomatorDashboard() {
   const [activeView, setActiveView] = useState('dashboard');
   const { 
     workflows, runs, integrations, 
     addWorkflow, updateWorkflow, deleteWorkflow,
     toggleIntegration, updateRun, resetData 
   } = useAutomator();
+  const { addToast } = useToast();
   
   // Builder State
   const [currentWorkflow, setCurrentWorkflow] = useState<PromptResponse | null>(null);
@@ -29,12 +30,17 @@ function AutomatorApp() {
   // UI State
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [connectingId, setConnectingId] = useState<string | null>(null);
-  const [runningWorkflowIds, setRunningWorkflowIds] = useState<string[]>([]);
+
+  // Derived state: Get the active run for the current workflow to visualize it
+  const currentActiveRun = currentWorkflow?.id 
+      ? runs.find(r => r.workflowId === currentWorkflow.id && r.status === 'running') 
+      : null;
 
   // 1. AI Generation Handler
   const handleWorkflowGenerated = (data: PromptResponse) => {
     setCurrentWorkflow(data); // New flow, no ID yet
     setActiveView('builder');
+    addToast('success', 'Workflow drafted successfully!');
   };
 
   // 2. Template Selection Handler
@@ -47,6 +53,7 @@ function AutomatorApp() {
       };
       setCurrentWorkflow(wf);
       setActiveView('builder');
+      addToast('info', `Loaded template: ${template.name}`);
   }
 
   // 3. Save Workflow (Create or Update)
@@ -64,6 +71,7 @@ function AutomatorApp() {
                 nodes: currentWorkflow.nodes,
                 edges: currentWorkflow.edges,
             });
+            addToast('success', 'Workflow updated successfully');
         }
     } else {
         // Create Mode
@@ -78,6 +86,7 @@ function AutomatorApp() {
             stats: { runs: 0, successRate: 100 }
         };
         addWorkflow(newWorkflow);
+        addToast('success', 'New workflow created and activated');
     }
     
     setActiveView('workflows');
@@ -88,6 +97,7 @@ function AutomatorApp() {
   const handleDeleteWorkflow = (id: string) => {
       if (confirm('Are you sure you want to delete this workflow? This cannot be undone.')) {
           deleteWorkflow(id);
+          addToast('info', 'Workflow deleted');
       }
   };
 
@@ -103,8 +113,9 @@ function AutomatorApp() {
 
   // 6. Execute Workflow (The Engine)
   const handleRunWorkflow = async (workflow: Workflow) => {
-    setRunningWorkflowIds(prev => [...prev, workflow.id]);
     
+    addToast('loading', `Starting ${workflow.name}...`, 2000);
+
     try {
         await executeWorkflow(
             workflow.id,
@@ -114,13 +125,37 @@ function AutomatorApp() {
             (updatedRunLog) => {
                 // Update runs state in real-time via context
                 updateRun(updatedRunLog);
+                
+                // Handle Completion Toasts
+                if (updatedRunLog.status === 'success') {
+                  addToast('success', `Run completed: ${workflow.name}`, 3000);
+                } else if (updatedRunLog.status === 'failed') {
+                  addToast('error', `Run failed: ${workflow.name}`, 5000);
+                }
             }
         );
     } catch (e) {
         console.error("Workflow failed to start", e);
-    } finally {
-        setRunningWorkflowIds(prev => prev.filter(id => id !== workflow.id));
+        addToast('error', 'Failed to start workflow');
     }
+  };
+
+  // Handle run inside builder (Simulate/Test)
+  const handleTestRunInBuilder = () => {
+      if (currentWorkflow) {
+          // Construct a temporary workflow object to run
+          const tempWf: Workflow = {
+              id: currentWorkflow.id || `temp-${Date.now()}`,
+              name: currentWorkflow.name,
+              description: currentWorkflow.explanation,
+              status: 'draft',
+              createdAt: new Date().toISOString(),
+              nodes: currentWorkflow.nodes,
+              edges: currentWorkflow.edges,
+              stats: { runs: 0, successRate: 0 }
+          };
+          handleRunWorkflow(tempWf);
+      }
   };
 
   const handleRunClick = (runId: string) => {
@@ -131,9 +166,17 @@ function AutomatorApp() {
   // 7. Integration Toggle
   const handleToggleIntegration = (id: string) => {
     setConnectingId(id);
+    // Simulate OAuth Delay
     setTimeout(() => {
       toggleIntegration(id);
       setConnectingId(null);
+      
+      const integration = integrations.find(i => i.id === id);
+      const isNowConnected = !integration?.connected; // Toggled value
+      
+      if (isNowConnected) addToast('success', `Connected to ${integration?.name}`);
+      else addToast('info', `Disconnected from ${integration?.name}`);
+
     }, 800);
   };
 
@@ -164,7 +207,6 @@ function AutomatorApp() {
                 }}
                 onRun={handleRunWorkflow}
                 onDelete={handleDeleteWorkflow}
-                runningWorkflowIds={runningWorkflowIds}
             />
           );
 
@@ -176,7 +218,10 @@ function AutomatorApp() {
           <div className="relative">
              <div className="absolute top-0 right-0">
                 <button 
-                  onClick={resetData}
+                  onClick={() => {
+                      resetData();
+                      addToast('info', 'Data reset to defaults');
+                  }}
                   className="flex items-center space-x-2 px-3 py-2 bg-red-900/20 text-red-400 rounded-lg border border-red-900/50 hover:bg-red-900/30 transition-colors text-xs"
                 >
                   <RotateCcw size={14} />
@@ -191,7 +236,7 @@ function AutomatorApp() {
          return (
              <div className="max-w-6xl mx-auto">
                  <h2 className="text-2xl font-bold text-white mb-6">Execution History</h2>
-                 <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                 <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
                      <table className="w-full text-left">
                          <thead className="bg-slate-950/50 text-slate-500 text-xs uppercase font-semibold">
                              <tr>
@@ -213,6 +258,7 @@ function AutomatorApp() {
                                              run.status === 'failed' ? 'bg-red-500/10 text-red-400' : 'bg-blue-500/10 text-blue-400 animate-pulse'
                                          }`}>
                                              {run.status === 'success' && <Check size={12} className="mr-1" />}
+                                             {run.status === 'running' && <Loader2 size={12} className="mr-1 animate-spin" />}
                                              {run.status}
                                          </span>
                                      </td>
@@ -270,7 +316,9 @@ function AutomatorApp() {
                     nodes={currentWorkflow.nodes} 
                     edges={currentWorkflow.edges} 
                     onSave={handleSaveWorkflow}
+                    onSimulate={handleTestRunInBuilder}
                     onUpdateNodes={handleUpdateNodes}
+                    activeRun={currentActiveRun}
                 />
             </div>
           </div>
@@ -341,8 +389,10 @@ function AutomatorApp() {
 
 export default function App() {
   return (
-    <AutomatorProvider>
-      <AutomatorApp />
-    </AutomatorProvider>
+    <ToastProvider>
+      <AutomatorProvider>
+        <AutomatorDashboard />
+      </AutomatorProvider>
+    </ToastProvider>
   );
 }

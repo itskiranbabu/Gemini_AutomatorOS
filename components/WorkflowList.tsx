@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Workflow } from '../types';
-import { Play, Edit, Trash2, Activity } from 'lucide-react';
+import { Play, Edit, Trash2, Activity, Loader2 } from 'lucide-react';
 import { useAutomator } from '../store/AutomatorContext';
 
 interface WorkflowListProps {
@@ -9,10 +9,9 @@ interface WorkflowListProps {
   onSelect: (workflow: Workflow) => void;
   onRun: (workflow: Workflow) => void;
   onDelete: (id: string) => void;
-  runningWorkflowIds: string[];
 }
 
-export const WorkflowList: React.FC<WorkflowListProps> = ({ workflows, onSelect, onRun, onDelete, runningWorkflowIds }) => {
+export const WorkflowList: React.FC<WorkflowListProps> = ({ workflows, onSelect, onRun, onDelete }) => {
   // We use the context hook to get access to all runs for dynamic stats calculation
   const { runs } = useAutomator();
 
@@ -65,7 +64,7 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({ workflows, onSelect,
         </div>
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
         <table className="w-full text-left">
           <thead className="bg-slate-950/50 text-slate-500 text-xs uppercase font-semibold">
             <tr>
@@ -78,7 +77,8 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({ workflows, onSelect,
           </thead>
           <tbody className="divide-y divide-slate-800">
             {workflows.map((wf) => {
-              const isRunning = runningWorkflowIds.includes(wf.id);
+              // Real-time: Check if ANY run for this workflow is currently 'running'
+              const isRunning = runs.some(r => r.workflowId === wf.id && r.status === 'running');
               const stats = getStats(wf.id);
 
               return (
@@ -95,7 +95,12 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({ workflows, onSelect,
                   </div>
                 </td>
                 <td className="px-6 py-4">
-                  {wf.status === 'active' ? (
+                  {isRunning ? (
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20 animate-pulse">
+                        <Loader2 size={10} className="mr-1 animate-spin" />
+                        Running
+                    </span>
+                  ) : wf.status === 'active' ? (
                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                         Active
                      </span>
@@ -123,7 +128,7 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({ workflows, onSelect,
                         disabled={isRunning}
                         className={`p-2 rounded-lg transition-colors border ${
                             isRunning 
-                            ? 'bg-brand-500/20 border-brand-500 text-brand-300 animate-pulse cursor-not-allowed' 
+                            ? 'bg-slate-800 border-slate-700 text-slate-600 cursor-not-allowed opacity-50' 
                             : 'bg-slate-800 hover:bg-emerald-600 hover:text-white border-slate-700 text-slate-300'
                         }`}
                         title="Trigger Run"

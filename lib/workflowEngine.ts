@@ -1,5 +1,6 @@
 
 import { WorkflowNode, WorkflowEdge, RunLog, RunStep, NodeType } from '../types';
+import { performAIAction } from '../services/geminiService';
 
 export interface ExecutionResult {
   runId: string;
@@ -16,11 +17,13 @@ const processNode = async (node: WorkflowNode, input: any): Promise<{ output: an
   const logs: string[] = [];
   let output = { ...input };
 
-  // Simulate realistic "Thinking" or "Network" delay (500ms - 2000ms)
-  const delay = Math.floor(Math.random() * 1500) + 500;
+  // Simulate realistic "Thinking" or "Network" delay (1000ms - 3000ms) - Slowed down for visual effect
+  // For AI nodes, the API call takes real time, so we reduce artificial delay.
+  const isAI = node.service.toLowerCase().includes('gemini') || node.service.toLowerCase().includes('ai') || node.type === NodeType.AI;
+  const delay = isAI ? 500 : Math.floor(Math.random() * 2000) + 1000;
   
   logs.push(`Event: ActivityTaskScheduled (${node.service}.${node.type})`);
-  await wait(delay / 2); // Initial handshake
+  await wait(delay * 0.3); // Initial handshake
   logs.push(`Event: ActivityTaskStarted`);
 
   // Simulate specific logic based on service/type
@@ -37,8 +40,27 @@ const processNode = async (node: WorkflowNode, input: any): Promise<{ output: an
       break;
     case 'gemini':
     case 'ai':
-      logs.push(`Sending prompt to LLM...`, `Tokens processed: ${Math.floor(Math.random() * 500)}`);
-      output = { ...output, aiSummary: "This is a simulated AI summary of the content." };
+    case 'gpt':
+      logs.push(`Building prompt context...`);
+      
+      const promptTemplate = node.config.prompt || "Summarize the input data.";
+      const model = node.config.model || 'gemini-2.5-flash';
+      
+      // Simple variable substitution / Context Injection
+      let finalPrompt = promptTemplate;
+      if (input && Object.keys(input).length > 0) {
+         finalPrompt += `\n\n--- Input Data Context ---\n${JSON.stringify(input, null, 2)}`;
+      }
+
+      try {
+          logs.push(`Sending request to ${model}...`);
+          const aiResult = await performAIAction(finalPrompt, model);
+          logs.push(`LLM Response received (${aiResult.length} chars).`);
+          output = { ...output, aiResult };
+      } catch (err: any) {
+          logs.push(`Error calling AI: ${err.message}`);
+          throw err;
+      }
       break;
     case 'system':
       if (node.label.toLowerCase().includes('wait')) {
@@ -49,7 +71,7 @@ const processNode = async (node: WorkflowNode, input: any): Promise<{ output: an
       logs.push(`Executing generic handler for ${node.service}...`);
   }
 
-  await wait(delay / 2); // Processing time
+  await wait(delay * 0.7); // Processing time
   logs.push(`Event: ActivityTaskCompleted`);
 
   const duration = ((Date.now() - startTime) / 1000).toFixed(2) + 's';
@@ -138,7 +160,7 @@ export const executeWorkflow = async (
         ...pendingStep,
         status: 'failed',
         endTime: new Date().toISOString(),
-        logs: ['Error: Execution failed', 'Stack trace: ...']
+        logs: ['Error: Execution failed', `Details: ${error}`]
       };
       
       currentRunLog = {

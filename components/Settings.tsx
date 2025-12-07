@@ -1,8 +1,26 @@
 
-import React from 'react';
-import { User, Shield, CreditCard, Bell, Key } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { User, Shield, CreditCard, Bell, Key, Save } from 'lucide-react';
+import { useAutomator } from '../store/AutomatorContext';
+import { useToast } from '../store/ToastContext';
 
 export const Settings = () => {
+  const { profile, updateProfile } = useAutomator();
+  const { addToast } = useToast();
+  
+  // Local form state
+  const [formData, setFormData] = useState(profile);
+  
+  // Sync when profile updates from context
+  useEffect(() => {
+      setFormData(profile);
+  }, [profile]);
+
+  const handleSave = () => {
+      updateProfile(formData);
+      addToast('success', 'Workspace settings saved successfully.');
+  };
+
   return (
     <div className="max-w-4xl mx-auto">
       <h2 className="text-3xl font-bold text-white mb-8">Settings</h2>
@@ -40,16 +58,39 @@ export const Settings = () => {
             <div className="grid grid-cols-1 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Workspace Name</label>
-                <input type="text" defaultValue="Acme Corp Automation" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-brand-500" />
+                <input 
+                    type="text" 
+                    value={formData.workspaceName}
+                    onChange={(e) => setFormData({...formData, workspaceName: e.target.value})}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-brand-500 transition-colors" 
+                />
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Contact Email</label>
-                <input type="email" defaultValue="admin@acme.com" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-brand-500" />
+                <input 
+                    type="email" 
+                    value={formData.email}
+                    onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:outline-none focus:border-brand-500 transition-colors" 
+                />
+              </div>
+               <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Plan</label>
+                <input 
+                    type="text" 
+                    value={formData.plan}
+                    disabled
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-4 py-2 text-slate-500 cursor-not-allowed" 
+                />
               </div>
             </div>
-            <div className="mt-4 flex justify-end">
-              <button className="bg-brand-600 hover:bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-                Save Changes
+            <div className="mt-6 flex justify-end">
+              <button 
+                onClick={handleSave}
+                className="bg-brand-600 hover:bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center space-x-2 shadow-lg shadow-brand-900/20"
+              >
+                <Save size={16} />
+                <span>Save Changes</span>
               </button>
             </div>
           </div>

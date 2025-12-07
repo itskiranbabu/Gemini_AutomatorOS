@@ -88,3 +88,10 @@ export interface PromptResponse {
   edges: WorkflowEdge[];
   explanation: string;
 }
+
+export interface UserProfile {
+  workspaceName: string;
+  email: string;
+  plan: string;
+  avatarInitials: string;
+}

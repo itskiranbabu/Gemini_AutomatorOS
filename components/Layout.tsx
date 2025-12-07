@@ -1,8 +1,10 @@
+
 import React from 'react';
 import { 
   LayoutDashboard, Zap, Activity, Settings, 
-  PlusCircle, Command, Book, FileText, Library
+  PlusCircle, Command, Book, FileText, Library, Loader2
 } from 'lucide-react';
+import { useAutomator } from '../store/AutomatorContext';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -10,21 +12,27 @@ interface LayoutProps {
   onChangeView: (view: string) => void;
 }
 
-const NavItem = ({ icon: Icon, label, active, onClick }: any) => (
+const NavItem = ({ icon: Icon, label, active, onClick, badge }: any) => (
   <button
     onClick={onClick}
-    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 group ${
+    className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-all duration-200 group ${
       active 
         ? 'bg-brand-600/10 text-brand-400 border-l-2 border-brand-500' 
         : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
     }`}
   >
-    <Icon size={20} className={active ? 'text-brand-400' : 'text-slate-500 group-hover:text-slate-300'} />
-    <span className="font-medium text-sm">{label}</span>
+    <div className="flex items-center space-x-3">
+        <Icon size={20} className={active ? 'text-brand-400' : 'text-slate-500 group-hover:text-slate-300'} />
+        <span className="font-medium text-sm">{label}</span>
+    </div>
+    {badge}
   </button>
 );
 
 export const Layout: React.FC<LayoutProps> = ({ children, activeView, onChangeView }) => {
+  const { runs, profile } = useAutomator();
+  const activeRunsCount = runs.filter(r => r.status === 'running').length;
+
   return (
     <div className="flex h-screen bg-dark-950 text-slate-200 selection:bg-brand-500/30">
       {/* Sidebar */}
@@ -61,7 +69,13 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onChangeVi
             icon={FileText} 
             label="Runs & Logs" 
             active={activeView === 'runs'} 
-            onClick={() => onChangeView('runs')} 
+            onClick={() => onChangeView('runs')}
+            badge={activeRunsCount > 0 && (
+                <span className="bg-blue-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center">
+                    <Loader2 size={8} className="animate-spin mr-1"/>
+                    {activeRunsCount}
+                </span>
+            )} 
           />
           <NavItem 
             icon={Activity} 
@@ -88,12 +102,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onChangeVi
         <div className="p-4 border-t border-slate-800/50">
           <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-800">
             <div className="flex items-center space-x-3 mb-3">
-              <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center">
-                <span className="text-xs font-bold">JD</span>
+              <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center border border-slate-600">
+                <span className="text-xs font-bold text-white">{profile.avatarInitials}</span>
               </div>
-              <div>
-                <p className="text-sm font-medium">John Doe</p>
-                <p className="text-xs text-slate-500">Pro Plan</p>
+              <div className="overflow-hidden">
+                <p className="text-sm font-medium truncate">{profile.workspaceName}</p>
+                <p className="text-xs text-slate-500 truncate">{profile.plan}</p>
               </div>
             </div>
           </div>

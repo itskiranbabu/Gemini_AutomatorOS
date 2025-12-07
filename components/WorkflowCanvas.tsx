@@ -1,6 +1,7 @@
+
 import React, { useEffect, useState } from 'react';
-import { WorkflowNode, WorkflowEdge, NodeType } from '../types';
-import { Zap, Mail, MessageSquare, ShoppingCart, Database, Brain, Play, Save, Settings2 } from 'lucide-react';
+import { WorkflowNode, WorkflowEdge, NodeType, RunLog } from '../types';
+import { Zap, Mail, MessageSquare, ShoppingCart, Database, Brain, Play, Save, Settings2, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { NodeConfigPanel } from './NodeConfigPanel';
 
 interface WorkflowCanvasProps {
@@ -10,6 +11,7 @@ interface WorkflowCanvasProps {
   onSimulate?: () => void;
   readOnly?: boolean;
   onUpdateNodes?: (nodes: WorkflowNode[]) => void;
+  activeRun?: RunLog | null; // For visualizing real-time execution
 }
 
 const getIcon = (service: string) => {
@@ -42,33 +44,9 @@ const getNodeBg = (type: NodeType) => {
   }
 }
 
-export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ nodes, edges, onSave, onSimulate, readOnly, onUpdateNodes }) => {
-  const [simulating, setSimulating] = useState<string | null>(null);
+export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ nodes, edges, onSave, onSimulate, readOnly, onUpdateNodes, activeRun }) => {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   
-  // Simple simulation effect
-  useEffect(() => {
-    if (simulating) {
-      // Simulation logic handled by parent interval usually, or local visual effects
-    }
-  }, [simulating]);
-
-  const handleSimulate = () => {
-    onSimulate?.();
-    let currentStep = 0;
-    setSimulating(nodes[0].id);
-
-    const interval = setInterval(() => {
-      currentStep++;
-      if (currentStep >= nodes.length) {
-        clearInterval(interval);
-        setSimulating(null);
-      } else {
-        setSimulating(nodes[currentStep].id);
-      }
-    }, 1500);
-  };
-
   const handleNodeUpdate = (updatedNode: WorkflowNode) => {
     if (onUpdateNodes) {
       const newNodes = nodes.map(n => n.id === updatedNode.id ? updatedNode : n);
@@ -79,7 +57,6 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ nodes, edges, on
 
   const handleNodeDelete = (nodeId: string) => {
     if (onUpdateNodes) {
-        // In a real app we would also remove connected edges
         const newNodes = nodes.filter(n => n.id !== nodeId);
         onUpdateNodes(newNodes);
     }
@@ -87,6 +64,14 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ nodes, edges, on
   };
 
   const selectedNode = nodes.find(n => n.id === selectedNodeId) || null;
+
+  // Determine node status from activeRun
+  const getNodeStatus = (nodeId: string): 'pending' | 'running' | 'success' | 'failed' | 'idle' => {
+      if (!activeRun) return 'idle';
+      const step = activeRun.steps.find(s => s.nodeId === nodeId);
+      if (step) return step.status;
+      return 'idle';
+  };
 
   return (
     <div className="relative w-full h-full bg-slate-900/30 rounded-xl overflow-hidden border border-slate-800/50 shadow-inner flex">
@@ -100,13 +85,20 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ nodes, edges, on
         {/* Toolbar */}
         {!readOnly && (
           <div className="absolute top-4 right-4 flex space-x-2 z-10">
-            <button onClick={handleSimulate} disabled={!!simulating} className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3 py-2 rounded-lg text-sm flex items-center space-x-2 transition-colors">
-              <Play size={16} className={simulating ? 'text-green-400 fill-current' : 'text-slate-400'} />
-              <span>{simulating ? 'Running...' : 'Test Run'}</span>
-            </button>
+            {activeRun?.status === 'running' ? (
+                <div className="bg-slate-800 border border-slate-700 text-brand-400 px-3 py-2 rounded-lg text-sm flex items-center space-x-2 animate-pulse">
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>Executing...</span>
+                </div>
+            ) : (
+                <button onClick={onSimulate} className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3 py-2 rounded-lg text-sm flex items-center space-x-2 transition-colors">
+                    <Play size={16} className="text-slate-400" />
+                    <span>Test Run</span>
+                </button>
+            )}
             <button onClick={onSave} className="bg-brand-600 hover:bg-brand-500 text-white px-4 py-2 rounded-lg text-sm flex items-center space-x-2 shadow-lg shadow-brand-900/20">
               <Save size={16} />
-              <span>Activate Workflow</span>
+              <span>{activeRun ? 'Save & Deploy' : 'Activate Workflow'}</span>
             </button>
           </div>
         )}
@@ -122,13 +114,15 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ nodes, edges, on
               const targetNode = nodes.find(n => n.id === edge.target);
               if (!sourceNode || !targetNode) return null;
 
-              // Simple Bezier curve calculation
-              const x1 = sourceNode.x + 200; // Right side of source
-              const y1 = sourceNode.y + 40;  // Center height
-              const x2 = targetNode.x;       // Left side of target
+              const x1 = sourceNode.x + 200; 
+              const y1 = sourceNode.y + 40; 
+              const x2 = targetNode.x;       
               const y2 = targetNode.y + 40;
-
               const controlPointOffset = Math.abs(x2 - x1) / 2;
+
+              // Check if edge is "active" (source node completed)
+              const sourceStatus = getNodeStatus(sourceNode.id);
+              const isFlowing = sourceStatus === 'success';
 
               return (
                 <g key={edge.id}>
@@ -140,11 +134,12 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ nodes, edges, on
                   />
                   <path
                     d={`M ${x1} ${y1} C ${x1 + controlPointOffset} ${y1}, ${x2 - controlPointOffset} ${y2}, ${x2} ${y2}`}
-                    stroke={simulating ? '#38bdf8' : 'transparent'}
+                    stroke={isFlowing ? '#38bdf8' : 'transparent'}
                     strokeWidth="2"
                     fill="none"
                     strokeDasharray="10,10"
-                    className={simulating ? 'animate-dash' : ''}
+                    className={isFlowing ? 'animate-dash' : ''}
+                    opacity={isFlowing ? 1 : 0}
                   />
                 </g>
               );
@@ -154,9 +149,22 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ nodes, edges, on
           <div className="relative w-full h-full min-w-[800px] min-h-[600px]">
             {nodes.map((node, index) => {
               const Icon = getIcon(node.service);
-              const isRunning = simulating === node.id;
+              const status = getNodeStatus(node.id);
               const isSelected = selectedNodeId === node.id;
               
+              // Dynamic Styling based on Status
+              let statusBorder = getNodeColor(node.type);
+              let statusRing = '';
+              
+              if (status === 'running') {
+                  statusBorder = 'border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.5)]';
+                  statusRing = 'ring-2 ring-blue-500';
+              } else if (status === 'success') {
+                  statusBorder = 'border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.3)]';
+              } else if (status === 'failed') {
+                  statusBorder = 'border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.3)]';
+              }
+
               return (
                 <div
                   key={node.id}
@@ -166,12 +174,11 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ nodes, edges, on
                   }}
                   className={`absolute w-64 rounded-xl border bg-slate-900 backdrop-blur-md p-4 transition-all duration-300 node-enter group cursor-pointer 
                     ${isSelected ? 'ring-2 ring-brand-400 border-transparent' : 'hover:border-brand-500/50'} 
-                    ${getNodeColor(node.type)}`}
+                    ${statusBorder} ${statusRing}`}
                   style={{ 
                     left: node.x, 
                     top: node.y,
-                    boxShadow: isRunning ? '0 0 20px rgba(56, 189, 248, 0.3)' : undefined,
-                    transform: isRunning || isSelected ? 'scale(1.02)' : 'scale(1)',
+                    transform: status === 'running' || isSelected ? 'scale(1.02)' : 'scale(1)',
                     zIndex: isSelected ? 10 : 1
                   }}
                 >
@@ -180,8 +187,13 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ nodes, edges, on
                     <div className={`p-2 rounded-lg bg-gradient-to-br ${getNodeBg(node.type)}`}>
                       <Icon size={18} className="text-white" />
                     </div>
-                    <div className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-400">
-                      {node.type}
+                    <div className="flex items-center gap-2">
+                        {status === 'running' && <Loader2 size={14} className="animate-spin text-blue-400"/>}
+                        {status === 'success' && <CheckCircle2 size={14} className="text-emerald-400"/>}
+                        {status === 'failed' && <XCircle size={14} className="text-red-400"/>}
+                        <div className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-400">
+                        {node.type}
+                        </div>
                     </div>
                   </div>
 
@@ -194,15 +206,14 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ nodes, edges, on
                   {/* Config Hint */}
                   <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-500 group-hover:text-brand-400 transition-colors">
                     <span className="flex items-center"><Settings2 size={12} className="mr-1"/> {readOnly ? 'View Config' : 'Configure'}</span>
-                    {isRunning && <span className="text-brand-400 font-medium animate-pulse">Processing...</span>}
                   </div>
                   
                   {/* Connectors */}
                   {index > 0 && (
-                    <div className="absolute top-1/2 -left-1.5 w-3 h-3 rounded-full bg-slate-400 border-2 border-slate-900"></div>
+                    <div className={`absolute top-1/2 -left-1.5 w-3 h-3 rounded-full border-2 border-slate-900 transition-colors ${status === 'success' || status === 'running' ? 'bg-brand-400' : 'bg-slate-400'}`}></div>
                   )}
                   {index < nodes.length - 1 && (
-                    <div className="absolute top-1/2 -right-1.5 w-3 h-3 rounded-full bg-slate-400 border-2 border-slate-900"></div>
+                    <div className={`absolute top-1/2 -right-1.5 w-3 h-3 rounded-full border-2 border-slate-900 transition-colors ${status === 'success' ? 'bg-brand-400' : 'bg-slate-400'}`}></div>
                   )}
                 </div>
               );

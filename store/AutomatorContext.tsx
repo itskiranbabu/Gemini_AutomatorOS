@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { Workflow, RunLog, Integration } from '../types';
+import { Workflow, RunLog, Integration, UserProfile } from '../types';
 import { MOCK_WORKFLOWS, MOCK_RUNS, INTEGRATIONS } from '../constants';
 import { supabase } from '../lib/supabaseClient';
 
@@ -8,12 +8,14 @@ interface AutomatorContextType {
   workflows: Workflow[];
   runs: RunLog[];
   integrations: Integration[];
+  profile: UserProfile;
   addWorkflow: (workflow: Workflow) => void;
   updateWorkflow: (workflow: Workflow) => void;
   deleteWorkflow: (id: string) => void;
   addRun: (run: RunLog) => void;
   updateRun: (run: RunLog) => void;
   toggleIntegration: (id: string) => void;
+  updateProfile: (profile: Partial<UserProfile>) => void;
   resetData: () => void;
   isLoading: boolean;
 }
@@ -25,11 +27,25 @@ export const AutomatorProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [runs, setRuns] = useState<RunLog[]>([]);
   const [integrations, setIntegrations] = useState<Integration[]>(INTEGRATIONS);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Profile State
+  const [profile, setProfile] = useState<UserProfile>({
+    workspaceName: 'Acme Corp Automation',
+    email: 'admin@acme.com',
+    plan: 'Pro Plan',
+    avatarInitials: 'JD'
+  });
 
-  // Load Initial Data
+  // Load Initial Data & Setup Realtime Subscription
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
+
+      // Load Profile from LocalStorage
+      const savedProfile = localStorage.getItem('automator_profile');
+      if (savedProfile) {
+          try { setProfile(JSON.parse(savedProfile)); } catch {}
+      }
 
       // 1. Try Supabase
       if (supabase) {
@@ -40,7 +56,7 @@ export const AutomatorProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             .select('*')
             .order('created_at', { ascending: false });
 
-          if (!wfError && wfData && wfData.length > 0) {
+          if (!wfError && wfData) {
             const mappedWorkflows: Workflow[] = wfData.map((row: any) => ({
               id: row.id,
               name: row.name,
@@ -49,11 +65,10 @@ export const AutomatorProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               createdAt: row.created_at,
               nodes: row.definition?.nodes || [],
               edges: row.definition?.edges || [],
-              stats: { runs: 0, successRate: 0 } // Calculate dynamic later
+              stats: { runs: 0, successRate: 0 }
             }));
             setWorkflows(mappedWorkflows);
           } else {
-             // Fallback if empty
              setWorkflows(loadLocalWorkflows());
           }
 
@@ -64,26 +79,36 @@ export const AutomatorProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             .order('started_at', { ascending: false })
             .limit(50);
             
-          if (!runError && runData && runData.length > 0) {
-              const mappedRuns: RunLog[] = runData.map((row: any) => ({
-                  id: row.id,
-                  workflowId: row.workflow_id,
-                  workflowName: 'Unknown Workflow', // Populate by join in real app
-                  status: row.status,
-                  startedAt: row.started_at,
-                  duration: row.duration || '0s',
-                  steps: row.logs || []
-              }));
-              // Enrich with workflow names
-              const enrichedRuns = mappedRuns.map(r => {
-                  const wf = workflows.find(w => w.id === r.workflowId) || 
-                             wfData?.find((w: any) => w.id === r.workflowId);
-                  return { ...r, workflowName: wf?.name || 'Deleted Workflow' };
-              });
-              setRuns(enrichedRuns);
+          if (!runError && runData) {
+              const mappedRuns: RunLog[] = runData.map((row: any) => mapRunFromDB(row, workflows));
+              setRuns(mappedRuns);
           } else {
               setRuns(loadLocalRuns());
           }
+
+          // --- REALTIME SUBSCRIPTION ---
+          const channel = supabase.channel('realtime_changes')
+            .on(
+              'postgres_changes',
+              { event: '*', schema: 'public', table: 'runs' },
+              (payload) => {
+                // Handle new runs (INSERT)
+                if (payload.eventType === 'INSERT') {
+                    const newRun = mapRunFromDB(payload.new, workflows);
+                    setRuns(prev => [newRun, ...prev]);
+                }
+                // Handle run updates (UPDATE) - e.g. steps completing
+                if (payload.eventType === 'UPDATE') {
+                    const updatedRun = mapRunFromDB(payload.new, workflows);
+                    setRuns(prev => prev.map(r => r.id === updatedRun.id ? updatedRun : r));
+                }
+              }
+            )
+            .subscribe();
+
+          return () => {
+            supabase.removeChannel(channel);
+          };
 
         } catch (e) {
           console.error("Supabase load failed, falling back to local", e);
@@ -100,6 +125,21 @@ export const AutomatorProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     fetchData();
   }, []);
+
+  // Helper to map DB row to RunLog
+  const mapRunFromDB = (row: any, currentWorkflows: Workflow[]): RunLog => {
+      // Try to find name in current workflows, fallback to what's in DB or ID
+      const wf = currentWorkflows.find(w => w.id === row.workflow_id);
+      return {
+          id: row.id,
+          workflowId: row.workflow_id,
+          workflowName: wf?.name || 'Unknown Workflow', 
+          status: row.status,
+          startedAt: row.started_at,
+          duration: row.duration || '0s',
+          steps: row.logs || []
+      };
+  };
 
   // Helpers for LocalStorage Fallback
   const loadLocalWorkflows = () => {
@@ -119,11 +159,11 @@ export const AutomatorProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const addWorkflow = async (wf: Workflow) => {
     setWorkflows(prev => [wf, ...prev]);
-    // Persist
     if (supabase) {
         await supabase.from('workflows').insert({
             id: wf.id,
             name: wf.name,
+            description: wf.description,
             definition: { nodes: wf.nodes, edges: wf.edges },
             is_active: wf.status === 'active',
             created_at: wf.createdAt
@@ -138,6 +178,7 @@ export const AutomatorProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (supabase) {
          await supabase.from('workflows').update({
             name: wf.name,
+            description: wf.description,
             definition: { nodes: wf.nodes, edges: wf.edges },
             is_active: wf.status === 'active'
         }).eq('id', wf.id);
@@ -160,8 +201,6 @@ export const AutomatorProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const addRun = async (run: RunLog) => {
     setRuns(prev => [run, ...prev]);
     if (supabase) {
-        // Note: Real-time updates usually handled by subscriptions or separate api
-        // Here we just insert initial record
         await supabase.from('runs').insert({
             id: run.id,
             workflow_id: run.workflowId,
@@ -175,6 +214,7 @@ export const AutomatorProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const updateRun = async (run: RunLog) => {
+    // Optimistic UI Update (fallback if Realtime is slow)
     setRuns(prev => {
         const index = prev.findIndex(r => r.id === run.id);
         if (index === -1) return [run, ...prev];
@@ -184,7 +224,6 @@ export const AutomatorProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
 
     if (supabase) {
-        // Debounce or optimize this in prod
         await supabase.from('runs').upsert({
             id: run.id,
             workflow_id: run.workflowId,
@@ -193,13 +232,28 @@ export const AutomatorProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             duration: run.duration,
             completed_at: run.status !== 'running' ? new Date().toISOString() : null
         });
+    } else {
+        // Local persist
+        const saved = localStorage.getItem('automator_runs');
+        const runs = saved ? JSON.parse(saved) : [];
+        const index = runs.findIndex((r: RunLog) => r.id === run.id);
+        if (index >= 0) runs[index] = run;
+        else runs.unshift(run);
+        localStorage.setItem('automator_runs', JSON.stringify(runs));
     }
   };
 
   const toggleIntegration = (id: string) => {
     setIntegrations(prev => prev.map(i => i.id === id ? { ...i, connected: !i.connected } : i));
-    // Usually auth/oauth tokens, storing mock status locally for now
     localStorage.setItem('automator_integrations', JSON.stringify(integrations));
+  };
+  
+  const updateProfile = (updates: Partial<UserProfile>) => {
+      setProfile(prev => {
+          const newProfile = { ...prev, ...updates };
+          localStorage.setItem('automator_profile', JSON.stringify(newProfile));
+          return newProfile;
+      });
   };
 
   const resetData = () => {
@@ -213,10 +267,10 @@ export const AutomatorProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   return (
     <AutomatorContext.Provider value={{
-      workflows, runs, integrations,
+      workflows, runs, integrations, profile,
       addWorkflow, updateWorkflow, deleteWorkflow,
       addRun, updateRun,
-      toggleIntegration, resetData,
+      toggleIntegration, updateProfile, resetData,
       isLoading
     }}>
       {children}

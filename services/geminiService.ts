@@ -123,3 +123,23 @@ export const explainWorkflow = async (nodes: WorkflowNode[]): Promise<string> =>
     return "Failed to generate explanation.";
   }
 };
+
+// Execute a real AI task within a workflow run
+export const performAIAction = async (prompt: string, model: string = 'gemini-2.5-flash'): Promise<string> => {
+    try {
+        if (!apiKey) return "Error: Missing API Key. Please configure NEXT_PUBLIC_API_KEY.";
+        
+        // Use the specified model or default to flash
+        const targetModel = model.includes('gemini') ? model : 'gemini-2.5-flash';
+
+        const response = await ai.models.generateContent({
+            model: targetModel,
+            contents: prompt
+        });
+        
+        return response.text || "No output generated.";
+    } catch (e: any) {
+        console.error("AI Action Error:", e);
+        return `Error generating content: ${e.message}`;
+    }
+};
