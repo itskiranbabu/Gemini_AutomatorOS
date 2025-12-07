@@ -1,7 +1,20 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { NodeType, WorkflowNode, WorkflowEdge, PromptResponse } from '../types';
 
-const apiKey = process.env.API_KEY || '';
+// Safe API Key access
+const getApiKey = () => {
+    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+        return process.env.API_KEY;
+    }
+    // Fallback for Vercel/Next env injection if mapped differently
+    if (typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_API_KEY) {
+        return process.env.NEXT_PUBLIC_API_KEY;
+    }
+    return '';
+};
+
+const apiKey = getApiKey();
 const ai = new GoogleGenAI({ apiKey });
 
 // System instruction to guide Gemini to act as an Automation Architect
@@ -18,6 +31,11 @@ Output Format: JSON only.
 
 export const generateWorkflowFromPrompt = async (userPrompt: string): Promise<PromptResponse | null> => {
   try {
+    if (!apiKey) {
+        console.error("Missing Gemini API Key");
+        throw new Error("API Key not configured");
+    }
+
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: userPrompt,
@@ -95,6 +113,7 @@ export const generateWorkflowFromPrompt = async (userPrompt: string): Promise<Pr
 
 export const explainWorkflow = async (nodes: WorkflowNode[]): Promise<string> => {
   try {
+     if (!apiKey) return "API Key missing.";
      const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: `Explain this workflow structure in simple terms: ${JSON.stringify(nodes.map(n => ({ label: n.label, service: n.service })))}`,
