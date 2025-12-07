@@ -1,0 +1,7 @@
+{
+  "name": "AutomatorOS",
+  "description": "An AI-first automation platform that converts natural language into complex workflows. Orchestrate apps, APIs, and data with an intuitive visual builder.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
