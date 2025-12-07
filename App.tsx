@@ -9,11 +9,13 @@ import { RunDetail } from './components/RunDetail';
 import { ArchitectureDocs } from './components/ArchitectureDocs';
 import { Settings } from './components/Settings';
 import { WorkflowList } from './components/WorkflowList';
-import { Workflow, PromptResponse, Template, WorkflowNode, RunLog } from './types';
-import { Check, Plus, Loader2, RotateCcw } from 'lucide-react';
+import { AuthPage } from './components/AuthPage';
+import { Workflow, PromptResponse, Template, WorkflowNode, RunLog, WorkflowEdge } from './types';
+import { Check, Plus, Loader2, RotateCcw, LogOut } from 'lucide-react';
 import { executeWorkflow } from './lib/workflowEngine';
 import { AutomatorProvider, useAutomator } from './store/AutomatorContext';
 import { ToastProvider, useToast } from './store/ToastContext';
+import { AuthProvider, useAuth } from './store/AuthContext';
 
 function AutomatorDashboard() {
   const [activeView, setActiveView] = useState('dashboard');
@@ -23,6 +25,7 @@ function AutomatorDashboard() {
     toggleIntegration, updateRun, resetData 
   } = useAutomator();
   const { addToast } = useToast();
+  const { signOut, user, isGuest } = useAuth();
   
   // Builder State
   const [currentWorkflow, setCurrentWorkflow] = useState<PromptResponse | null>(null);
@@ -110,8 +113,18 @@ function AutomatorDashboard() {
           });
       }
   };
+  
+  // 6. Update Edges in Builder
+  const handleUpdateEdges = (updatedEdges: WorkflowEdge[]) => {
+      if (currentWorkflow) {
+          setCurrentWorkflow({
+              ...currentWorkflow,
+              edges: updatedEdges
+          });
+      }
+  };
 
-  // 6. Execute Workflow (The Engine)
+  // 7. Execute Workflow (The Engine)
   const handleRunWorkflow = async (workflow: Workflow) => {
     
     addToast('loading', `Starting ${workflow.name}...`, 2000);
@@ -163,7 +176,7 @@ function AutomatorDashboard() {
       setActiveView('run_detail');
   }
 
-  // 7. Integration Toggle
+  // 8. Integration Toggle
   const handleToggleIntegration = (id: string) => {
     setConnectingId(id);
     // Simulate OAuth Delay
@@ -216,7 +229,7 @@ function AutomatorDashboard() {
       case 'settings':
         return (
           <div className="relative">
-             <div className="absolute top-0 right-0">
+             <div className="absolute top-0 right-0 flex space-x-2">
                 <button 
                   onClick={() => {
                       resetData();
@@ -226,6 +239,16 @@ function AutomatorDashboard() {
                 >
                   <RotateCcw size={14} />
                   <span>Reset Demo Data</span>
+                </button>
+                <button 
+                  onClick={() => {
+                      signOut();
+                      addToast('info', 'Signed out');
+                  }}
+                  className="flex items-center space-x-2 px-3 py-2 bg-slate-800 text-slate-300 rounded-lg border border-slate-700 hover:bg-slate-700 transition-colors text-xs"
+                >
+                  <LogOut size={14} />
+                  <span>Sign Out</span>
                 </button>
              </div>
              <Settings />
@@ -318,6 +341,7 @@ function AutomatorDashboard() {
                     onSave={handleSaveWorkflow}
                     onSimulate={handleTestRunInBuilder}
                     onUpdateNodes={handleUpdateNodes}
+                    onUpdateEdges={handleUpdateEdges}
                     activeRun={currentActiveRun}
                 />
             </div>
@@ -387,12 +411,34 @@ function AutomatorDashboard() {
   );
 }
 
+function AppContent() {
+    const { session, isGuest, loading } = useAuth();
+    
+    if (loading) {
+        return (
+            <div className="h-screen w-screen flex items-center justify-center bg-dark-950 text-brand-400">
+                <Loader2 size={32} className="animate-spin" />
+            </div>
+        )
+    }
+
+    if (!session && !isGuest) {
+        return <AuthPage />;
+    }
+
+    return (
+        <AutomatorProvider>
+            <AutomatorDashboard />
+        </AutomatorProvider>
+    );
+}
+
 export default function App() {
   return (
     <ToastProvider>
-      <AutomatorProvider>
-        <AutomatorDashboard />
-      </AutomatorProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
     </ToastProvider>
   );
 }

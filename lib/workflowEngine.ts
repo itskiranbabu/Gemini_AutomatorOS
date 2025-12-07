@@ -36,7 +36,8 @@ const processNode = async (node: WorkflowNode, input: any): Promise<{ output: an
       break;
     case 'shopify':
       logs.push(`Fetching order data...`, `Rate limit check: OK`);
-      output = { ...output, orderId: '#SH-' + Math.floor(Math.random() * 10000) };
+      output = { ...output, orderId: '#SH-' + Math.floor(Math.random() * 10000), totalValue: Math.floor(Math.random() * 500) }; // Add random value for branching test
+      logs.push(`Order Value: $${output.totalValue}`);
       break;
     case 'gemini':
     case 'ai':
@@ -65,6 +66,31 @@ const processNode = async (node: WorkflowNode, input: any): Promise<{ output: an
     case 'system':
       if (node.label.toLowerCase().includes('wait')) {
         logs.push(`Timer started...`, `Timer fired.`);
+      }
+      // Logic for condition evaluation
+      if (node.type === NodeType.CONDITION) {
+          logs.push(`Evaluating condition logic...`);
+          // Simple mock evaluation: check for specific keys in input or random
+          // In a real app, we would parse `node.config.expression`
+          let result = true;
+          
+          if (node.config.variable && input[node.config.variable]) {
+              const val = input[node.config.variable];
+              const threshold = node.config.threshold || 0;
+              const operator = node.config.operator || '>';
+              
+              if (operator === '>') result = val > threshold;
+              else if (operator === '<') result = val < threshold;
+              else if (operator === '==') result = val == threshold;
+              
+              logs.push(`Check: ${node.config.variable} (${val}) ${operator} ${threshold} = ${result}`);
+          } else {
+             // Random fallback if no config
+             result = Math.random() > 0.5;
+             logs.push(`No explicit config. Random evaluation: ${result}`);
+          }
+          
+          output = { ...output, conditionResult: result };
       }
       break;
     default:
@@ -132,9 +158,12 @@ export const executeWorkflow = async (
     };
     onStepUpdate(currentRunLog);
 
+    let stepOutput = {};
+
     // 2. Execute Step
     try {
       const { output, logs, duration } = await processNode(currentNode, stepInput);
+      stepOutput = output;
       
       // Update step to success
       const completedStep: RunStep = {
@@ -173,12 +202,34 @@ export const executeWorkflow = async (
       return currentRunLog;
     }
 
-    // 3. Find next node
-    const nextEdge = edges.find(e => e.source === currentNode!.id);
-    if (nextEdge) {
-      currentNode = nodes.find(n => n.id === nextEdge.target);
+    // 3. Find next node (Branching Logic)
+    if (currentNode.type === NodeType.CONDITION) {
+        // Look for edges based on result
+        const result = (stepOutput as any).conditionResult;
+        const targetLabel = result === true ? 'true' : 'false';
+        
+        // Try to find edge labeled explicitly, or fallback to any edge if not labeled
+        let nextEdge = edges.find(e => e.source === currentNode!.id && e.label?.toLowerCase() === targetLabel);
+        
+        // Fallback: If no explicit 'true'/'false' edge, just take the first one (maybe single path)
+        if (!nextEdge) {
+             nextEdge = edges.find(e => e.source === currentNode!.id);
+        }
+
+        if (nextEdge) {
+            currentNode = nodes.find(n => n.id === nextEdge.target);
+        } else {
+            currentNode = undefined;
+        }
+
     } else {
-      currentNode = undefined; // End of flow
+        // Standard linear transition
+        const nextEdge = edges.find(e => e.source === currentNode!.id);
+        if (nextEdge) {
+            currentNode = nodes.find(n => n.id === nextEdge.target);
+        } else {
+            currentNode = undefined; // End of flow
+        }
     }
   }
 

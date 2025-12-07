@@ -20,11 +20,16 @@ const ai = new GoogleGenAI({ apiKey });
 // System instruction to guide Gemini to act as an Automation Architect
 const SYSTEM_INSTRUCTION = `
 You are AutomatorOS, an advanced AI automation architect. 
-Your goal is to accept natural language requests from users (e.g., "When a new order comes in on Shopify, add it to Sheets and message Slack") 
+Your goal is to accept natural language requests from users (e.g., "When a new order comes in on Shopify, if value > 100 add to VIP sheet, else send email") 
 and convert them into a structured JSON representation of a workflow.
 
 Supported Services: Gmail, Slack, Shopify, Google Sheets, Notion, GitHub, Stripe, HubSpot, Twitter, Discord, OpenAI, Gemini, System (Delay, Filter).
-Node Types: TRIGGER (starts flow), ACTION (performs task), CONDITION (logic), AI (generative tasks).
+Node Types: TRIGGER (starts flow), ACTION (performs task), CONDITION (logic/branching), AI (generative tasks).
+
+Crucial Rules for Branching:
+- If the user implies a choice (e.g., "if X then Y else Z"), use a CONDITION node.
+- Edges coming OUT of a CONDITION node MUST have a label: "true" or "false".
+- Ensure the workflow graph is connected.
 
 Output Format: JSON only.
 `;
@@ -55,11 +60,11 @@ export const generateWorkflowFromPrompt = async (userPrompt: string): Promise<Pr
                   id: { type: Type.STRING },
                   type: { type: Type.STRING, enum: [NodeType.TRIGGER, NodeType.ACTION, NodeType.CONDITION, NodeType.AI] },
                   service: { type: Type.STRING },
-                  label: { type: Type.STRING, description: "Short label for the node, e.g., 'New Email'" },
+                  label: { type: Type.STRING, description: "Short label for the node, e.g., 'Check Value > 100'" },
                   description: { type: Type.STRING },
                   config: { 
                     type: Type.OBJECT, 
-                    description: "Key-value pairs for basic config, e.g., { 'channel': '#general' }",
+                    description: "Key-value pairs for basic config. For CONDITIONS, use 'variable', 'operator', 'threshold'.",
                     properties: {
                          anyKey: { type: Type.STRING }
                     }
@@ -76,7 +81,7 @@ export const generateWorkflowFromPrompt = async (userPrompt: string): Promise<Pr
                   id: { type: Type.STRING },
                   source: { type: Type.STRING },
                   target: { type: Type.STRING },
-                  label: { type: Type.STRING }
+                  label: { type: Type.STRING, description: "Label for the edge, critical for branches (use 'true' or 'false')" }
                 },
                 required: ["id", "source", "target"]
               }
@@ -92,13 +97,17 @@ export const generateWorkflowFromPrompt = async (userPrompt: string): Promise<Pr
     
     const data = JSON.parse(text) as PromptResponse;
     
-    // Post-process to add layout coordinates (simple auto-layout)
-    // A real app would use Dagre or Elkjs. Here we simulate a simple horizontal layout.
-    const layoutNodes = data.nodes.map((node, index) => ({
-      ...node,
-      x: 100 + (index * 250),
-      y: 200 + (index % 2 === 0 ? 0 : 50) // Slight stagger for visual interest
-    }));
+    // Post-process to add layout coordinates
+    // We attempt a naive tree layout
+    const layoutNodes = data.nodes.map((node, index) => {
+        // Basic check for branching to adjust Y
+        const isBranch = data.edges.filter(e => e.source === node.id).length > 1;
+        return {
+            ...node,
+            x: 100 + (index * 250),
+            y: 200 + (index % 2 === 0 ? 0 : 50) 
+        };
+    });
 
     return {
       ...data,

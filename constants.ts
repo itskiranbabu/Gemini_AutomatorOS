@@ -47,6 +47,25 @@ export const MOCK_WORKFLOWS: Workflow[] = [
         { id: 'e3', source: '3', target: '4' }
     ],
     stats: { runs: 45, successRate: 88.5 }
+  },
+  {
+      id: 'wf-3',
+      name: 'High Value Order Router',
+      description: 'Checks order value. If > 100, alerts VIP channel, else logs to standard sheet.',
+      status: 'active',
+      createdAt: timeAgo(100),
+      nodes: [
+          { id: '1', type: NodeType.TRIGGER, service: 'shopify', label: 'New Order', x: 50, y: 250, config: {} },
+          { id: '2', type: NodeType.CONDITION, service: 'system', label: 'Value > $100', x: 300, y: 250, config: { variable: 'totalValue', operator: '>', threshold: 100 } },
+          { id: '3', type: NodeType.ACTION, service: 'slack', label: 'Alert VIP Channel', x: 600, y: 150, config: { channel: '#vip-orders' } },
+          { id: '4', type: NodeType.ACTION, service: 'sheets', label: 'Log Standard Order', x: 600, y: 350, config: {} }
+      ],
+      edges: [
+          { id: 'e1', source: '1', target: '2' },
+          { id: 'e2', source: '2', target: '3', label: 'true' },
+          { id: 'e3', source: '2', target: '4', label: 'false' }
+      ],
+      stats: { runs: 12, successRate: 100 }
   }
 ];
 
