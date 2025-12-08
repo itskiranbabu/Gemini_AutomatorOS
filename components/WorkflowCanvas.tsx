@@ -1,7 +1,8 @@
 
+
 import React, { useEffect, useState, useRef } from 'react';
 import { WorkflowNode, WorkflowEdge, NodeType, RunLog } from '../types';
-import { Zap, Mail, MessageSquare, ShoppingCart, Database, Brain, Play, Save, Settings2, Loader2, CheckCircle2, XCircle, GitFork, Plus, Trash2, X } from 'lucide-react';
+import { Zap, Mail, MessageSquare, ShoppingCart, Database, Brain, Play, Save, Settings2, Loader2, CheckCircle2, XCircle, GitFork, Plus, Trash2, X, FileCode } from 'lucide-react';
 import { NodeConfigPanel } from './NodeConfigPanel';
 
 interface WorkflowCanvasProps {
@@ -17,6 +18,7 @@ interface WorkflowCanvasProps {
 
 const getIcon = (service: string, type: NodeType) => {
   if (type === NodeType.CONDITION) return GitFork;
+  if (type === NodeType.SCRIPT) return FileCode;
   const s = service.toLowerCase();
   if (s.includes('gmail') || s.includes('mail')) return Mail;
   if (s.includes('slack') || s.includes('discord')) return MessageSquare;
@@ -32,6 +34,7 @@ const getNodeColor = (type: NodeType) => {
     case NodeType.ACTION: return 'border-indigo-500 shadow-indigo-500/20';
     case NodeType.CONDITION: return 'border-amber-500 shadow-amber-500/20';
     case NodeType.AI: return 'border-purple-500 shadow-purple-500/20';
+    case NodeType.SCRIPT: return 'border-pink-500 shadow-pink-500/20';
     default: return 'border-slate-600';
   }
 };
@@ -42,6 +45,7 @@ const getNodeBg = (type: NodeType) => {
     case NodeType.ACTION: return 'from-indigo-500/20 to-indigo-600/5';
     case NodeType.CONDITION: return 'from-amber-500/20 to-amber-600/5';
     case NodeType.AI: return 'from-purple-500/20 to-purple-600/5';
+    case NodeType.SCRIPT: return 'from-pink-500/20 to-pink-600/5';
     default: return 'from-slate-700/50 to-slate-800/50';
   }
 }
@@ -96,11 +100,6 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       if (readOnly) return;
       e.stopPropagation();
       
-      // Calculate offset from node top-left
-      // We need the container rect to normalize
-      // But simplifying: assume node.x/y matches page coords roughly or just use delta
-      // Best approach for absolute layout:
-      
       setDraggingNodeId(node.id);
       setSelectedNodeId(node.id);
       setDragOffset({
@@ -122,7 +121,6 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
              if (draggingNodeId && onUpdateNodes) {
                  const newX = x - dragOffset.x;
                  const newY = y - dragOffset.y;
-                 // Snap grid? optional
                  
                  const updatedNodes = nodes.map(n => 
                      n.id === draggingNodeId ? { ...n, x: newX, y: newY } : n
@@ -158,11 +156,24 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
 
       // Check if exists
       const exists = edges.some(e => e.source === connectingSourceId && e.target === targetNodeId);
+      
       if (!exists && onUpdateEdges) {
+          const sourceNode = nodes.find(n => n.id === connectingSourceId);
+          let label: string | undefined = undefined;
+
+          // Smart Branching Logic for Conditions
+          if (sourceNode?.type === NodeType.CONDITION) {
+             const existingEdges = edges.filter(e => e.source === connectingSourceId);
+             const hasTrue = existingEdges.some(e => e.label === 'true');
+             // If we already have a True path, default to False, otherwise True
+             label = hasTrue ? 'false' : 'true';
+          }
+
           const newEdge: WorkflowEdge = {
               id: `e-${Date.now()}`,
               source: connectingSourceId,
-              target: targetNodeId
+              target: targetNodeId,
+              label
           };
           onUpdateEdges([...edges, newEdge]);
       }
@@ -398,6 +409,7 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       {selectedNodeId && !readOnly && (
         <NodeConfigPanel 
           node={nodes.find(n => n.id === selectedNodeId) || null} 
+          nodes={nodes}
           onClose={() => setSelectedNodeId(null)} 
           onUpdate={handleNodeUpdate}
           onDelete={handleNodeDelete}

@@ -133,6 +133,19 @@ export const explainWorkflow = async (nodes: WorkflowNode[]): Promise<string> =>
   }
 };
 
+// Optimizes a workflow definition
+export const optimizeWorkflow = async (current: PromptResponse): Promise<PromptResponse | null> => {
+    const prompt = `
+      Review the following workflow JSON and optimize it. 
+      Possible optimizations: consolidate steps, fix logic gaps, suggest error handling (though not strictly required in schema), or improve naming.
+      Return the OPTIMIZED JSON structure fully.
+      
+      Current Workflow:
+      ${JSON.stringify(current)}
+    `;
+    return generateWorkflowFromPrompt(prompt);
+};
+
 // Execute a real AI task within a workflow run
 export const performAIAction = async (prompt: string, model: string = 'gemini-2.5-flash'): Promise<string> => {
     try {

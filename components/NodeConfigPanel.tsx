@@ -1,28 +1,42 @@
 
+
 import React, { useState, useEffect } from 'react';
-import { X, Save, Trash2, Info, Code } from 'lucide-react';
-import { WorkflowNode } from '../types';
+import { X, Save, Trash2, Info, Code, Braces } from 'lucide-react';
+import { WorkflowNode, NodeType } from '../types';
 
 interface NodeConfigPanelProps {
   node: WorkflowNode | null;
+  nodes: WorkflowNode[]; // Access to other nodes for variable suggestions
   onClose: () => void;
   onUpdate: (updatedNode: WorkflowNode) => void;
   onDelete: (nodeId: string) => void;
 }
 
-export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, onClose, onUpdate, onDelete }) => {
+export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, nodes, onClose, onUpdate, onDelete }) => {
   const [label, setLabel] = useState('');
+  const [service, setService] = useState('');
+  const [type, setType] = useState<NodeType>(NodeType.ACTION);
   const [config, setConfig] = useState<Record<string, any>>({});
-  const [mode, setMode] = useState<'form' | 'json'>('form');
+  const [mode, setMode] = useState<'form' | 'json' | 'code'>('form');
   const [jsonStr, setJsonStr] = useState('');
+  const [codeStr, setCodeStr] = useState('');
+  const [showVars, setShowVars] = useState(false);
 
   useEffect(() => {
     if (node) {
       setLabel(node.label);
+      setService(node.service);
+      setType(node.type);
       setConfig(node.config || {});
       setJsonStr(JSON.stringify(node.config || {}, null, 2));
-      // Default to form if simple, json if complex
-      setMode('form');
+      setCodeStr(node.config?.code || '// Write JavaScript here.\n// Access input via `input` object.\n// Return an object to merge with output.\n\nconst value = input.totalValue || 0;\nreturn { calculatedTax: value * 0.2 };');
+      
+      // Auto-switch to code mode for Script nodes
+      if (node.type === NodeType.SCRIPT) {
+          setMode('code');
+      } else {
+          setMode('form');
+      }
     }
   }, [node]);
 
@@ -30,10 +44,22 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, onClose,
 
   const handleSave = () => {
     try {
-      const finalConfig = mode === 'json' ? JSON.parse(jsonStr) : config;
-      onUpdate({ ...node, label, config: finalConfig });
+      let finalConfig = config;
+      if (mode === 'json') {
+          finalConfig = JSON.parse(jsonStr);
+      } else if (mode === 'code') {
+          // Store code string in config
+          finalConfig = { ...config, code: codeStr };
+      }
+      onUpdate({ 
+          ...node, 
+          label, 
+          service,
+          type,
+          config: finalConfig 
+      });
     } catch (e) {
-      alert("Invalid JSON in configuration");
+      alert("Invalid configuration format");
     }
   };
 
@@ -43,33 +69,51 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, onClose,
     setJsonStr(JSON.stringify(newConfig, null, 2));
   };
 
+  // Helper to guess variables based on service type
+  const getVarsForService = (svc: string) => {
+      if (svc.includes('shopify')) return ['orderId', 'totalValue', 'customerEmail', 'items'];
+      if (svc.includes('typeform')) return ['formId', 'answers', 'email'];
+      if (svc.includes('github')) return ['repo', 'pr_number', 'branch'];
+      if (svc.includes('gemini') || svc.includes('ai')) return ['aiResult', 'summary'];
+      return ['id', 'timestamp'];
+  }
+
+  // Generate available variables list
+  const availableVars = nodes
+    .filter(n => n.id !== node.id) // Naive: assume all others are upstream for help text
+    .map(n => ({
+        source: n.label,
+        vars: getVarsForService(n.service)
+    }));
+
+
   // Helper to render form fields based on service type
   const renderFormFields = () => {
-    const service = node.service.toLowerCase();
+    const s = service.toLowerCase();
 
     // 1. Gmail / Email
-    if (service.includes('gmail') || service.includes('mail')) {
+    if (s.includes('gmail') || s.includes('mail')) {
       return (
         <>
           <InputField label="To Address" value={config.to} onChange={(v) => updateConfigField('to', v)} placeholder="recipient@example.com" />
-          <InputField label="Subject" value={config.subject} onChange={(v) => updateConfigField('subject', v)} placeholder="New Alert" />
-          <TextAreaField label="Body" value={config.body} onChange={(v) => updateConfigField('body', v)} placeholder="Hello..." />
+          <InputField label="Subject" value={config.subject} onChange={(v) => updateConfigField('subject', v)} placeholder="New Alert: {{orderId}}" />
+          <TextAreaField label="Body" value={config.body} onChange={(v) => updateConfigField('body', v)} placeholder="Hello {{name}}, ..." />
         </>
       );
     }
 
     // 2. Slack / Discord
-    if (service.includes('slack') || service.includes('discord')) {
+    if (s.includes('slack') || s.includes('discord')) {
       return (
         <>
           <InputField label="Channel" value={config.channel} onChange={(v) => updateConfigField('channel', v)} placeholder="#general" />
-          <TextAreaField label="Message" value={config.message} onChange={(v) => updateConfigField('message', v)} placeholder="Hello Team..." />
+          <TextAreaField label="Message" value={config.message} onChange={(v) => updateConfigField('message', v)} placeholder="New Lead: {{email}}..." />
         </>
       );
     }
 
     // 3. Shopify / E-commerce
-    if (service.includes('shopify')) {
+    if (s.includes('shopify')) {
       return (
         <>
           <SelectField 
@@ -89,30 +133,48 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, onClose,
     }
 
     // 4. AI / Gemini
-    if (service.includes('gemini') || service.includes('gpt') || service.includes('ai')) {
+    if (s.includes('gemini') || s.includes('gpt') || s.includes('ai')) {
       return (
         <>
           <SelectField 
             label="Model" 
             value={config.model} 
             onChange={(v) => updateConfigField('model', v)} 
-            options={['gemini-pro', 'gpt-4', 'claude-3']} 
+            options={['gemini-2.5-flash', 'gemini-pro', 'gpt-4']} 
           />
-          <TextAreaField label="Prompt" value={config.prompt} onChange={(v) => updateConfigField('prompt', v)} placeholder="Summarize this..." />
+          <TextAreaField label="Prompt" value={config.prompt} onChange={(v) => updateConfigField('prompt', v)} placeholder="Summarize this text: {{body}}..." />
         </>
       );
+    }
+    
+    // 5. Condition
+    if (type === NodeType.CONDITION) {
+        return (
+            <>
+                <InputField label="Variable" value={config.variable} onChange={(v) => updateConfigField('variable', v)} placeholder="e.g. totalValue" />
+                <div className="grid grid-cols-2 gap-2">
+                    <SelectField 
+                        label="Operator" 
+                        value={config.operator} 
+                        onChange={(v) => updateConfigField('operator', v)} 
+                        options={['>', '<', '==', '!=', 'contains']} 
+                    />
+                    <InputField label="Threshold" value={config.threshold} onChange={(v) => updateConfigField('threshold', v)} placeholder="100" />
+                </div>
+            </>
+        )
     }
 
     // Default Fallback
     return (
       <div className="text-center py-4 text-slate-500 text-sm bg-slate-800/30 rounded-lg">
-        No smart fields available for {node.service}. <br/> Use JSON mode.
+        No smart fields available for {service}. <br/> Use JSON mode.
       </div>
     );
   };
 
   return (
-    <div className="absolute top-4 right-4 bottom-4 w-80 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl flex flex-col animate-in slide-in-from-right duration-200 z-20">
+    <div className="absolute top-4 right-4 bottom-4 w-96 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl flex flex-col animate-in slide-in-from-right duration-200 z-20">
       {/* Header */}
       <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/50 rounded-t-xl">
         <h3 className="font-semibold text-white flex items-center gap-2">
@@ -138,11 +200,37 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, onClose,
               className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-brand-500 transition-colors"
             />
           </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Service</label>
-            <div className="w-full bg-slate-800/50 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-400 capitalize cursor-not-allowed flex items-center justify-between">
-              <span>{node.service}</span>
-              <span className="text-[10px] bg-slate-700 px-1.5 py-0.5 rounded">{node.type}</span>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Type</label>
+                 <select 
+                    value={type}
+                    onChange={(e) => {
+                        setType(e.target.value as NodeType);
+                        // Auto-switch mode based on type
+                        if (e.target.value === NodeType.SCRIPT) setMode('code');
+                        else setMode('form');
+                    }}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-sm text-slate-200 focus:outline-none focus:border-brand-500"
+                 >
+                     {Object.values(NodeType).map(t => <option key={t} value={t}>{t}</option>)}
+                 </select>
+            </div>
+            <div>
+                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Service</label>
+                 <select 
+                    value={service}
+                    onChange={(e) => setService(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-sm text-slate-200 focus:outline-none focus:border-brand-500"
+                 >
+                     <option value="system">System</option>
+                     <option value="gmail">Gmail</option>
+                     <option value="slack">Slack</option>
+                     <option value="shopify">Shopify</option>
+                     <option value="sheets">Sheets</option>
+                     <option value="gemini">Gemini AI</option>
+                     <option value="script">Script (JS)</option>
+                 </select>
             </div>
           </div>
         </div>
@@ -150,25 +238,42 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, onClose,
         {/* Mode Toggle */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-2">
             <label className="text-xs font-bold text-slate-500 uppercase">Configuration</label>
-            <div className="flex bg-slate-800 rounded-lg p-0.5">
-                <button 
-                    onClick={() => setMode('form')}
-                    className={`px-2 py-0.5 text-[10px] font-medium rounded-md transition-all ${mode === 'form' ? 'bg-brand-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                >
-                    Form
-                </button>
-                <button 
-                    onClick={() => setMode('json')}
-                    className={`px-2 py-0.5 text-[10px] font-medium rounded-md transition-all flex items-center gap-1 ${mode === 'json' ? 'bg-brand-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                >
-                    <Code size={10} /> JSON
-                </button>
-            </div>
+            
+            {type === NodeType.SCRIPT ? (
+                 <span className="text-[10px] font-mono text-pink-400">JavaScript Mode</span>
+            ) : (
+                <div className="flex bg-slate-800 rounded-lg p-0.5">
+                    <button 
+                        onClick={() => setMode('form')}
+                        className={`px-2 py-0.5 text-[10px] font-medium rounded-md transition-all ${mode === 'form' ? 'bg-brand-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                    >
+                        Form
+                    </button>
+                    <button 
+                        onClick={() => setMode('json')}
+                        className={`px-2 py-0.5 text-[10px] font-medium rounded-md transition-all flex items-center gap-1 ${mode === 'json' ? 'bg-brand-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                    >
+                        <Code size={10} /> JSON
+                    </button>
+                </div>
+            )}
         </div>
 
         {/* Dynamic Fields */}
-        <div className="space-y-4">
-            {mode === 'form' ? renderFormFields() : (
+        <div className="space-y-4 h-full">
+            {mode === 'code' ? (
+                 <div className="relative h-64 flex flex-col">
+                    <textarea 
+                        value={codeStr}
+                        onChange={(e) => setCodeStr(e.target.value)}
+                        className="flex-1 w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-xs font-mono text-pink-300 focus:outline-none focus:border-pink-500 resize-none leading-relaxed custom-scrollbar"
+                        spellCheck={false}
+                    />
+                    <p className="text-[10px] text-slate-500 mt-2">
+                        Execute raw JS. Return an object to merge it into the workflow payload.
+                    </p>
+                </div>
+            ) : mode === 'form' ? renderFormFields() : (
                 <div className="relative">
                     <textarea 
                     value={jsonStr}
@@ -178,6 +283,34 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, onClose,
                     <p className="text-[10px] text-slate-500 mt-1">Directly edit the JSON configuration payload.</p>
                 </div>
             )}
+
+            {/* Variable Helper */}
+            <div className="bg-slate-950/50 border border-slate-800 rounded-lg p-3">
+                 <button onClick={() => setShowVars(!showVars)} className="w-full flex justify-between items-center text-xs font-semibold text-slate-400 hover:text-white transition-colors">
+                     <span className="flex items-center"><Braces size={12} className="mr-1"/> Available Variables</span>
+                     <Info size={12} />
+                 </button>
+                 {showVars && (
+                     <div className="mt-2 text-[10px] space-y-2 animate-in slide-in-from-top-2">
+                        {availableVars.map((group, i) => (
+                            <div key={i}>
+                                <div className="text-slate-500 font-medium mb-0.5">{group.source}</div>
+                                <div className="flex flex-wrap gap-1">
+                                    {group.vars.map(v => (
+                                        <code key={v} className="bg-slate-800 text-emerald-400 px-1.5 py-0.5 rounded border border-slate-700 select-all cursor-copy" title="Click to copy" onClick={() => {
+                                            navigator.clipboard.writeText(`{{${v}}}`);
+                                        }}>
+                                            {`{{${v}}}`}
+                                        </code>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                        {availableVars.length === 0 && <span className="text-slate-600">No predecessor variables found.</span>}
+                     </div>
+                 )}
+            </div>
+
         </div>
 
       </div>

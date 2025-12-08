@@ -10,12 +10,14 @@ import { ArchitectureDocs } from './components/ArchitectureDocs';
 import { Settings } from './components/Settings';
 import { WorkflowList } from './components/WorkflowList';
 import { AuthPage } from './components/AuthPage';
+import { RunModal } from './components/RunModal';
 import { Workflow, PromptResponse, Template, WorkflowNode, RunLog, WorkflowEdge } from './types';
-import { Check, Plus, Loader2, RotateCcw, LogOut } from 'lucide-react';
+import { Check, Plus, Loader2, RotateCcw, LogOut, Sparkles } from 'lucide-react';
 import { executeWorkflow } from './lib/workflowEngine';
 import { AutomatorProvider, useAutomator } from './store/AutomatorContext';
 import { ToastProvider, useToast } from './store/ToastContext';
 import { AuthProvider, useAuth } from './store/AuthContext';
+import { optimizeWorkflow } from './services/geminiService';
 
 function AutomatorDashboard() {
   const [activeView, setActiveView] = useState('dashboard');
@@ -29,10 +31,15 @@ function AutomatorDashboard() {
   
   // Builder State
   const [currentWorkflow, setCurrentWorkflow] = useState<PromptResponse | null>(null);
+  const [isOptimizing, setIsOptimizing] = useState(false);
   
   // UI State
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [connectingId, setConnectingId] = useState<string | null>(null);
+  
+  // Run Modal State
+  const [runModalOpen, setRunModalOpen] = useState(false);
+  const [workflowToRun, setWorkflowToRun] = useState<Workflow | null>(null);
 
   // Derived state: Get the active run for the current workflow to visualize it
   const currentActiveRun = currentWorkflow?.id 
@@ -124,28 +131,37 @@ function AutomatorDashboard() {
       }
   };
 
-  // 7. Execute Workflow (The Engine)
-  const handleRunWorkflow = async (workflow: Workflow) => {
-    
-    addToast('loading', `Starting ${workflow.name}...`, 2000);
+  // 7. Initiate Run (Opens Modal)
+  const handleInitiateRun = (workflow: Workflow) => {
+      setWorkflowToRun(workflow);
+      setRunModalOpen(true);
+  };
+
+  // 8. Execute Run (Called from Modal)
+  const handleExecuteRun = async (payload: any) => {
+    setRunModalOpen(false);
+    if (!workflowToRun) return;
+
+    addToast('loading', `Starting ${workflowToRun.name}...`, 2000);
 
     try {
         await executeWorkflow(
-            workflow.id,
-            workflow.name,
-            workflow.nodes,
-            workflow.edges,
+            workflowToRun.id,
+            workflowToRun.name,
+            workflowToRun.nodes,
+            workflowToRun.edges,
             (updatedRunLog) => {
                 // Update runs state in real-time via context
                 updateRun(updatedRunLog);
                 
                 // Handle Completion Toasts
                 if (updatedRunLog.status === 'success') {
-                  addToast('success', `Run completed: ${workflow.name}`, 3000);
+                  addToast('success', `Run completed: ${workflowToRun.name}`, 3000);
                 } else if (updatedRunLog.status === 'failed') {
-                  addToast('error', `Run failed: ${workflow.name}`, 5000);
+                  addToast('error', `Run failed: ${workflowToRun.name}`, 5000);
                 }
-            }
+            },
+            payload
         );
     } catch (e) {
         console.error("Workflow failed to start", e);
@@ -167,7 +183,29 @@ function AutomatorDashboard() {
               edges: currentWorkflow.edges,
               stats: { runs: 0, successRate: 0 }
           };
-          handleRunWorkflow(tempWf);
+          handleInitiateRun(tempWf);
+      }
+  };
+
+  const handleOptimize = async () => {
+      if (!currentWorkflow) return;
+      setIsOptimizing(true);
+      addToast('loading', 'AI is analyzing your workflow...', 2000);
+      try {
+          const optimized = await optimizeWorkflow(currentWorkflow);
+          if (optimized) {
+              setCurrentWorkflow({
+                  ...currentWorkflow, // Keep ID
+                  ...optimized
+              });
+              addToast('success', 'Workflow optimized!');
+          } else {
+              addToast('error', 'Could not optimize workflow.');
+          }
+      } catch (e) {
+          addToast('error', 'Optimization failed.');
+      } finally {
+          setIsOptimizing(false);
       }
   };
 
@@ -176,7 +214,7 @@ function AutomatorDashboard() {
       setActiveView('run_detail');
   }
 
-  // 8. Integration Toggle
+  // 9. Integration Toggle
   const handleToggleIntegration = (id: string) => {
     setConnectingId(id);
     // Simulate OAuth Delay
@@ -218,7 +256,7 @@ function AutomatorDashboard() {
                     });
                     setActiveView('builder');
                 }}
-                onRun={handleRunWorkflow}
+                onRun={handleInitiateRun}
                 onDelete={handleDeleteWorkflow}
             />
           );
@@ -329,6 +367,14 @@ function AutomatorDashboard() {
                     <p className="text-slate-400 text-sm max-w-3xl">{currentWorkflow.explanation}</p>
                 </div>
                 <div className="flex items-center space-x-3">
+                     <button
+                        onClick={handleOptimize}
+                        disabled={isOptimizing}
+                        className="flex items-center space-x-2 bg-slate-800 hover:bg-brand-900/20 text-slate-300 hover:text-brand-400 border border-slate-700 hover:border-brand-500/50 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                     >
+                        {isOptimizing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                        <span>Optimize with AI</span>
+                     </button>
                      <div className="text-xs font-mono text-slate-500 bg-slate-900 px-2 py-1 rounded border border-slate-800">
                         {currentWorkflow.id ? 'Active Mode' : 'Draft Mode'}
                     </div>
@@ -407,6 +453,14 @@ function AutomatorDashboard() {
   return (
     <Layout activeView={activeView} onChangeView={setActiveView}>
       {renderContent()}
+      
+      {/* Run Configuration Modal */}
+      <RunModal 
+        isOpen={runModalOpen}
+        onClose={() => setRunModalOpen(false)}
+        onRun={handleExecuteRun}
+        workflowName={workflowToRun?.name || 'Workflow'}
+      />
     </Layout>
   );
 }

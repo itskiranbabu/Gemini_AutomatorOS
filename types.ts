@@ -5,12 +5,13 @@ export enum NodeType {
   ACTION = 'ACTION',
   CONDITION = 'CONDITION',
   AI = 'AI',
+  SCRIPT = 'SCRIPT',
 }
 
 export interface WorkflowNode {
   id: string;
   type: NodeType;
-  service: string; // e.g., 'gmail', 'slack', 'shopify', 'system'
+  service: string; // e.g., 'gmail', 'slack', 'shopify', 'system', 'script'
   label: string;
   description?: string;
   config: Record<string, any>;
