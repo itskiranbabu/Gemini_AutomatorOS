@@ -120,12 +120,31 @@ export const generateWorkflowFromPrompt = async (userPrompt: string): Promise<Pr
   }
 };
 
-export const explainWorkflow = async (nodes: WorkflowNode[]): Promise<string> => {
+export const explainWorkflow = async (nodes: WorkflowNode[], edges: WorkflowEdge[]): Promise<string> => {
   try {
      if (!apiKey) return "API Key missing.";
+     
+     // Minimize token usage by stripping heavy config
+     const context = {
+         nodes: nodes.map(n => ({ id: n.id, label: n.label, service: n.service, type: n.type, config: n.type === NodeType.CONDITION ? n.config : undefined })),
+         edges: edges.map(e => ({ source: e.source, target: e.target, label: e.label }))
+     };
+
+     const prompt = `
+       You are an expert technical writer. Analyze this automation workflow graph structure and write a concise, natural language summary (max 2 sentences).
+       
+       Logic handling:
+       - Identify the Trigger.
+       - If there are Condition nodes (branches), explain the decision logic clearly (e.g., "If X, then do Y, otherwise do Z").
+       - Mention the key actions performed.
+       
+       Input JSON Graph:
+       ${JSON.stringify(context)}
+     `;
+
      const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: `Explain this workflow structure in simple terms: ${JSON.stringify(nodes.map(n => ({ label: n.label, service: n.service })))}`,
+        contents: prompt,
      });
      return response.text || "No explanation available.";
   } catch (e) {

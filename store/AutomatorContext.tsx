@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { Workflow, RunLog, Integration, UserProfile } from '../types';
+import { Workflow, RunLog, Integration, UserProfile, AuditLogEntry, WorkflowVersion } from '../types';
 import { MOCK_WORKFLOWS, MOCK_RUNS, INTEGRATIONS } from '../constants';
 import { supabase } from '../lib/supabaseClient';
 
@@ -9,6 +9,7 @@ interface AutomatorContextType {
   runs: RunLog[];
   integrations: Integration[];
   profile: UserProfile;
+  auditLogs: AuditLogEntry[];
   addWorkflow: (workflow: Workflow) => void;
   updateWorkflow: (workflow: Workflow) => void;
   deleteWorkflow: (id: string) => void;
@@ -26,6 +27,7 @@ export const AutomatorProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [runs, setRuns] = useState<RunLog[]>([]);
   const [integrations, setIntegrations] = useState<Integration[]>(INTEGRATIONS);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   // Profile State
@@ -35,6 +37,19 @@ export const AutomatorProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     plan: 'Pro Plan',
     avatarInitials: 'JD'
   });
+
+  const logAction = (action: string, entityId?: string, entityName?: string, details?: string) => {
+      const entry: AuditLogEntry = {
+          id: `log-${Date.now()}`,
+          action,
+          entityId,
+          entityName,
+          user: profile.email,
+          timestamp: new Date().toISOString(),
+          details
+      };
+      setAuditLogs(prev => [entry, ...prev]);
+  };
 
   // Load Initial Data & Setup Realtime Subscription
   useEffect(() => {
@@ -65,6 +80,7 @@ export const AutomatorProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               createdAt: row.created_at,
               nodes: row.definition?.nodes || [],
               edges: row.definition?.edges || [],
+              history: row.definition?.history || [],
               stats: { runs: 0, successRate: 0 }
             }));
             setWorkflows(mappedWorkflows);
@@ -159,12 +175,14 @@ export const AutomatorProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const addWorkflow = async (wf: Workflow) => {
     setWorkflows(prev => [wf, ...prev]);
+    logAction('WORKFLOW_CREATED', wf.id, wf.name);
+
     if (supabase) {
         await supabase.from('workflows').insert({
             id: wf.id,
             name: wf.name,
             description: wf.description,
-            definition: { nodes: wf.nodes, edges: wf.edges },
+            definition: { nodes: wf.nodes, edges: wf.edges, history: [] },
             is_active: wf.status === 'active',
             created_at: wf.createdAt
         });
@@ -174,22 +192,44 @@ export const AutomatorProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
   
   const updateWorkflow = async (wf: Workflow) => {
-    setWorkflows(prev => prev.map(w => w.id === wf.id ? wf : w));
+    // 1. Find existing to create snapshot
+    const existing = workflows.find(w => w.id === wf.id);
+    let newHistory = existing?.history || [];
+    
+    if (existing) {
+        const version: WorkflowVersion = {
+            id: `v-${Date.now()}`,
+            versionNumber: (newHistory.length) + 1,
+            createdAt: new Date().toISOString(),
+            nodes: existing.nodes,
+            edges: existing.edges,
+            name: existing.name
+        };
+        newHistory = [version, ...newHistory].slice(0, 10); // Keep last 10 versions
+    }
+
+    const updatedWf = { ...wf, history: newHistory };
+    setWorkflows(prev => prev.map(w => w.id === wf.id ? updatedWf : w));
+    
+    logAction('WORKFLOW_UPDATED', wf.id, wf.name, `Version ${newHistory.length + 1}`);
+
     if (supabase) {
          await supabase.from('workflows').update({
             name: wf.name,
             description: wf.description,
-            definition: { nodes: wf.nodes, edges: wf.edges },
+            definition: { nodes: wf.nodes, edges: wf.edges, history: newHistory },
             is_active: wf.status === 'active'
         }).eq('id', wf.id);
     } else {
-        const updated = workflows.map(w => w.id === wf.id ? wf : w);
+        const updated = workflows.map(w => w.id === wf.id ? updatedWf : w);
         localStorage.setItem('automator_workflows', JSON.stringify(updated));
     }
   };
 
   const deleteWorkflow = async (id: string) => {
     setWorkflows(prev => prev.filter(w => w.id !== id));
+    logAction('WORKFLOW_DELETED', id);
+
     if (supabase) {
         await supabase.from('workflows').delete().eq('id', id);
     } else {
@@ -245,6 +285,8 @@ export const AutomatorProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const toggleIntegration = (id: string) => {
     setIntegrations(prev => prev.map(i => i.id === id ? { ...i, connected: !i.connected } : i));
+    const integ = integrations.find(i => i.id === id);
+    logAction('INTEGRATION_TOGGLED', id, integ?.name);
     localStorage.setItem('automator_integrations', JSON.stringify(integrations));
   };
   
@@ -254,6 +296,7 @@ export const AutomatorProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           localStorage.setItem('automator_profile', JSON.stringify(newProfile));
           return newProfile;
       });
+      logAction('PROFILE_UPDATED');
   };
 
   const resetData = () => {
@@ -261,13 +304,14 @@ export const AutomatorProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setWorkflows(MOCK_WORKFLOWS);
         setRuns(MOCK_RUNS);
         localStorage.clear();
+        logAction('SYSTEM_RESET');
         window.location.reload();
     }
   };
 
   return (
     <AutomatorContext.Provider value={{
-      workflows, runs, integrations, profile,
+      workflows, runs, integrations, profile, auditLogs,
       addWorkflow, updateWorkflow, deleteWorkflow,
       addRun, updateRun,
       toggleIntegration, updateProfile, resetData,

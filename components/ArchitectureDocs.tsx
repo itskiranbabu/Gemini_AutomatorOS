@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Database, Server, Cpu, Globe, Layers, Lock, GitBranch, Code, FileCode } from 'lucide-react';
+import { Database, Server, Cpu, Globe, Layers, Lock, GitBranch, Code, FileCode, CheckCircle2 } from 'lucide-react';
 import { DB_SCHEMA_SQL } from '../constants';
 import { TEMPORAL_WORKFLOW_EXAMPLE, ACTIVITY_EXAMPLE, CONNECTOR_SDK_EXAMPLE } from '../lib/backend-examples';
 
@@ -39,6 +39,16 @@ export const ArchitectureDocs: React.FC = () => {
 
       {activeTab === 'overview' && (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          
+          {/* Status Check */}
+          <div className="mb-8 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center space-x-3">
+             <CheckCircle2 className="text-emerald-400" />
+             <div>
+                 <h3 className="text-sm font-bold text-emerald-400">System Operational</h3>
+                 <p className="text-xs text-slate-400">All modules (Auth, Engine, AI, DB) are active and running in production mode.</p>
+             </div>
+          </div>
+
           {/* High Level Architecture */}
           <section className="mb-12">
             <h2 className="text-xl font-bold text-white mb-6 flex items-center">

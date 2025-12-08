@@ -11,13 +11,14 @@ import { Settings } from './components/Settings';
 import { WorkflowList } from './components/WorkflowList';
 import { AuthPage } from './components/AuthPage';
 import { RunModal } from './components/RunModal';
+import { ShortcutsModal } from './components/ShortcutsModal';
 import { Workflow, PromptResponse, Template, WorkflowNode, RunLog, WorkflowEdge } from './types';
-import { Check, Plus, Loader2, RotateCcw, LogOut, Sparkles } from 'lucide-react';
+import { Check, Plus, Loader2, RotateCcw, LogOut, Sparkles, History, Clock, FileQuestion } from 'lucide-react';
 import { executeWorkflow } from './lib/workflowEngine';
 import { AutomatorProvider, useAutomator } from './store/AutomatorContext';
 import { ToastProvider, useToast } from './store/ToastContext';
 import { AuthProvider, useAuth } from './store/AuthContext';
-import { optimizeWorkflow } from './services/geminiService';
+import { optimizeWorkflow, explainWorkflow } from './services/geminiService';
 import { validateWorkflow } from './lib/workflowUtils';
 
 function AutomatorDashboard() {
@@ -33,19 +34,25 @@ function AutomatorDashboard() {
   // Builder State
   const [currentWorkflow, setCurrentWorkflow] = useState<PromptResponse | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [isExplaining, setIsExplaining] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   
   // UI State
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [connectingId, setConnectingId] = useState<string | null>(null);
   
-  // Run Modal State
+  // Modals
   const [runModalOpen, setRunModalOpen] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const [workflowToRun, setWorkflowToRun] = useState<Workflow | null>(null);
 
   // Derived state: Get the active run for the current workflow to visualize it
   const currentActiveRun = currentWorkflow?.id 
       ? runs.find(r => r.workflowId === currentWorkflow.id && r.status === 'running') 
       : null;
+
+  // Access current full workflow object including history
+  const fullCurrentWorkflow = currentWorkflow?.id ? workflows.find(w => w.id === currentWorkflow.id) : null;
 
   // 1. AI Generation Handler
   const handleWorkflowGenerated = (data: PromptResponse) => {
@@ -288,6 +295,24 @@ function AutomatorDashboard() {
       }
   };
 
+  const handleExplain = async () => {
+    if (!currentWorkflow) return;
+    setIsExplaining(true);
+    addToast('loading', 'Generating explanation...', 2000);
+    try {
+        const text = await explainWorkflow(currentWorkflow.nodes, currentWorkflow.edges);
+        setCurrentWorkflow({
+            ...currentWorkflow,
+            explanation: text
+        });
+        addToast('success', 'Description updated.');
+    } catch (e) {
+        addToast('error', 'Failed to explain workflow.');
+    } finally {
+        setIsExplaining(false);
+    }
+  };
+
   const handleRunClick = (runId: string) => {
       setSelectedRunId(runId);
       setActiveView('run_detail');
@@ -308,6 +333,19 @@ function AutomatorDashboard() {
       else addToast('info', `Disconnected from ${integration?.name}`);
 
     }, 800);
+  };
+  
+  const handleRestoreVersion = (version: any) => {
+      if (!currentWorkflow) return;
+      if (confirm(`Restore version from ${new Date(version.createdAt).toLocaleString()}? Current changes will be lost.`)) {
+          setCurrentWorkflow({
+              ...currentWorkflow,
+              nodes: version.nodes,
+              edges: version.edges
+          });
+          setShowHistory(false);
+          addToast('success', 'Version restored.');
+      }
   };
 
   const renderContent = () => {
@@ -437,7 +475,7 @@ function AutomatorDashboard() {
       case 'builder':
         if (!currentWorkflow) return <div className="text-center text-slate-500 mt-20">No active workflow.</div>;
         return (
-          <div className="h-full flex flex-col">
+          <div className="h-full flex flex-col relative">
             <div className="mb-6 flex justify-between items-end">
                 <div>
                     <h2 className="text-2xl font-bold text-white mb-1">
@@ -447,14 +485,65 @@ function AutomatorDashboard() {
                     <p className="text-slate-400 text-sm max-w-3xl">{currentWorkflow.explanation}</p>
                 </div>
                 <div className="flex items-center space-x-3">
+                    <button
+                        onClick={() => setShowShortcuts(true)}
+                        className="text-slate-500 hover:text-white transition-colors"
+                        title="Keyboard Shortcuts"
+                    >
+                        <FileQuestion size={18} />
+                    </button>
+                     {fullCurrentWorkflow && (
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowHistory(!showHistory)}
+                                className="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                            >
+                                <History size={12} />
+                                <span>History</span>
+                            </button>
+                            {showHistory && (
+                                <div className="absolute top-10 right-0 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 p-2 animate-in fade-in zoom-in-95 duration-200">
+                                    <h4 className="text-xs font-bold text-slate-500 uppercase px-2 mb-2">Previous Versions</h4>
+                                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                                        {!fullCurrentWorkflow.history?.length ? (
+                                            <div className="text-xs text-slate-500 px-2 py-1">No history yet.</div>
+                                        ) : fullCurrentWorkflow.history.map((ver) => (
+                                            <button 
+                                                key={ver.id}
+                                                onClick={() => handleRestoreVersion(ver)}
+                                                className="w-full text-left px-2 py-2 hover:bg-slate-800 rounded-lg text-xs flex justify-between items-center group"
+                                            >
+                                                <div>
+                                                    <div className="text-slate-300 font-medium">Version {ver.versionNumber}</div>
+                                                    <div className="text-slate-500">{new Date(ver.createdAt).toLocaleTimeString()}</div>
+                                                </div>
+                                                <RotateCcw size={12} className="text-brand-400 opacity-0 group-hover:opacity-100" />
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                     )}
+
+                     <button
+                        onClick={handleExplain}
+                        disabled={isExplaining}
+                        className="flex items-center space-x-2 bg-slate-800 hover:bg-brand-900/20 text-slate-300 hover:text-brand-400 border border-slate-700 hover:border-brand-500/50 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                     >
+                        {isExplaining ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                        <span>Explain Graph</span>
+                     </button>
+                     
                      <button
                         onClick={handleOptimize}
                         disabled={isOptimizing}
                         className="flex items-center space-x-2 bg-slate-800 hover:bg-brand-900/20 text-slate-300 hover:text-brand-400 border border-slate-700 hover:border-brand-500/50 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
                      >
                         {isOptimizing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                        <span>Optimize with AI</span>
+                        <span>Optimize</span>
                      </button>
+                     
                      <div className="text-xs font-mono text-slate-500 bg-slate-900 px-2 py-1 rounded border border-slate-800">
                         {currentWorkflow.id ? 'Active Mode' : 'Draft Mode'}
                     </div>
@@ -540,6 +629,12 @@ function AutomatorDashboard() {
         onClose={() => setRunModalOpen(false)}
         onRun={handleExecuteRun}
         workflowName={workflowToRun?.name || 'Workflow'}
+      />
+
+      {/* Shortcuts Guide */}
+      <ShortcutsModal 
+        isOpen={showShortcuts}
+        onClose={() => setShowShortcuts(false)}
       />
     </Layout>
   );

@@ -26,6 +26,15 @@ export interface WorkflowEdge {
   label?: string;
 }
 
+export interface WorkflowVersion {
+  id: string;
+  versionNumber: number;
+  createdAt: string;
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  name: string;
+}
+
 export interface Workflow {
   id: string;
   name: string;
@@ -39,6 +48,7 @@ export interface Workflow {
     runs: number;
     successRate: number;
   };
+  history?: WorkflowVersion[];
 }
 
 export interface RunStep {
@@ -95,4 +105,14 @@ export interface UserProfile {
   email: string;
   plan: string;
   avatarInitials: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  action: string; // e.g., 'WORKFLOW_CREATED', 'WORKFLOW_UPDATED'
+  entityId?: string;
+  entityName?: string;
+  user: string;
+  timestamp: string;
+  details?: string;
 }

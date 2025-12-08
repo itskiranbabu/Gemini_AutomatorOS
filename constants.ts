@@ -108,8 +108,13 @@ export const MOCK_TEMPLATES: Template[] = [
     description: 'Create a Linear issue from a Slack message reaction.',
     category: 'Engineering',
     popularity: 4,
-    nodes: [],
-    edges: []
+    nodes: [
+        { id: '1', type: NodeType.TRIGGER, service: 'slack', label: 'Reaction Added', x: 100, y: 200, config: {} },
+        { id: '2', type: NodeType.ACTION, service: 'linear', label: 'Create Issue', x: 400, y: 200, config: {} }
+    ],
+    edges: [
+        { id: 'e1', source: '1', target: '2' }
+    ]
   },
   {
     id: 'tmpl-4',
@@ -117,8 +122,77 @@ export const MOCK_TEMPLATES: Template[] = [
     description: 'Extract data from PDF invoice in Gmail and add to Quickbooks.',
     category: 'Finance',
     popularity: 5,
-    nodes: [],
-    edges: []
+    nodes: [
+        { id: '1', type: NodeType.TRIGGER, service: 'gmail', label: 'New Email (Invoice)', x: 100, y: 200, config: {} },
+        { id: '2', type: NodeType.AI, service: 'gemini', label: 'Extract Data', x: 350, y: 200, config: {} },
+        { id: '3', type: NodeType.ACTION, service: 'quickbooks', label: 'Create Bill', x: 600, y: 200, config: {} }
+    ],
+    edges: [
+        { id: 'e1', source: '1', target: '2' },
+        { id: 'e2', source: '2', target: '3' }
+    ]
+  },
+  {
+    id: 'tmpl-5',
+    name: 'Customer Sentiment Analysis',
+    description: 'Analyze support tickets, tag them, and alert manager if negative.',
+    category: 'CRM',
+    popularity: 4,
+    nodes: [
+        { id: '1', type: NodeType.TRIGGER, service: 'zendesk', label: 'New Ticket', x: 50, y: 250, config: {} },
+        { id: '2', type: NodeType.AI, service: 'gemini', label: 'Analyze Sentiment', x: 300, y: 250, config: {} },
+        { id: '3', type: NodeType.CONDITION, service: 'system', label: 'Is Negative?', x: 550, y: 250, config: { variable: 'sentiment', operator: '==', threshold: 'negative' } },
+        { id: '4', type: NodeType.ACTION, service: 'slack', label: 'Alert Manager', x: 800, y: 150, config: {} },
+        { id: '5', type: NodeType.ACTION, service: 'zendesk', label: 'Add Tag', x: 800, y: 350, config: {} }
+    ],
+    edges: [
+        { id: 'e1', source: '1', target: '2' },
+        { id: 'e2', source: '2', target: '3' },
+        { id: 'e3', source: '3', target: '4', label: 'true' },
+        { id: 'e4', source: '3', target: '5', label: 'false' }
+    ]
+  },
+  {
+    id: 'tmpl-6',
+    name: 'Employee Onboarding',
+    description: 'Trigger from HR system, generate welcome email, create Slack account, invite to GitHub.',
+    category: 'HR',
+    popularity: 5,
+    nodes: [
+        { id: '1', type: NodeType.TRIGGER, service: 'bamboo', label: 'New Employee', x: 100, y: 250, config: {} },
+        { id: '2', type: NodeType.AI, service: 'gemini', label: 'Draft Welcome Email', x: 350, y: 250, config: {} },
+        { id: '3', type: NodeType.ACTION, service: 'gmail', label: 'Send Email', x: 600, y: 150, config: {} },
+        { id: '4', type: NodeType.ACTION, service: 'slack', label: 'Create User', x: 600, y: 350, config: {} },
+        { id: '5', type: NodeType.ACTION, service: 'github', label: 'Invite to Org', x: 850, y: 350, config: {} }
+    ],
+    edges: [
+        { id: 'e1', source: '1', target: '2' },
+        { id: 'e2', source: '2', target: '3' },
+        { id: 'e3', source: '2', target: '4' },
+        { id: 'e4', source: '4', target: '5' }
+    ]
+  },
+  {
+    id: 'tmpl-7',
+    name: 'Expense Approval Flow',
+    description: 'Auto-approve expenses < $500. Route > $500 to Manager for approval.',
+    category: 'Finance',
+    popularity: 3,
+    nodes: [
+        { id: '1', type: NodeType.TRIGGER, service: 'expensify', label: 'New Expense', x: 50, y: 250, config: {} },
+        { id: '2', type: NodeType.CONDITION, service: 'system', label: 'Amount > 500?', x: 300, y: 250, config: { variable: 'amount', operator: '>', threshold: 500 } },
+        { id: '3', type: NodeType.ACTION, service: 'slack', label: 'Request Approval', x: 600, y: 150, config: { message: 'Approve expense: {{id}}' } },
+        { id: '4', type: NodeType.ACTION, service: 'quickbooks', label: 'Pay Expense', x: 600, y: 350, config: {} },
+        { id: '5', type: NodeType.ACTION, service: 'webhook', label: 'Wait for Approval', x: 850, y: 150, config: {} },
+        { id: '6', type: NodeType.ACTION, service: 'quickbooks', label: 'Pay Expense', x: 1100, y: 150, config: {} }
+    ],
+    edges: [
+        { id: 'e1', source: '1', target: '2' },
+        { id: 'e2', source: '2', target: '3', label: 'true' },
+        { id: 'e3', source: '2', target: '4', label: 'false' },
+        { id: 'e4', source: '3', target: '5' },
+        { id: 'e5', source: '5', target: '6' }
+    ]
   }
 ];
 
