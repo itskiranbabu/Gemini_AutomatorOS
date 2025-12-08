@@ -10,6 +10,7 @@ export interface ExecutionResult {
 }
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const MAX_EXECUTION_STEPS = 50; // Safety valve to prevent infinite loops crashing the browser
 
 // --- Retry Logic ---
 const MAX_RETRIES = 3;
@@ -60,7 +61,7 @@ const resolveConfig = (config: any, context: any): any => {
 
 
 // Simulates processing a single node
-const processNode = async (node: WorkflowNode, input: any): Promise<{ output: any, logs: string[], duration: string }> => {
+export const processNode = async (node: WorkflowNode, input: any): Promise<{ output: any, logs: string[], duration: string }> => {
   const startTime = Date.now();
   const logs: string[] = [];
   let output = { ...input };
@@ -307,8 +308,32 @@ export const executeWorkflow = async (
   if (!currentNode) currentNode = nodes[0];
 
   let stepInput = initialInput;
+  let stepsExecuted = 0;
   
   while (currentNode) {
+    if (stepsExecuted >= MAX_EXECUTION_STEPS) {
+         const errorMsg = `Safety Limit Reached: Workflow exceeded ${MAX_EXECUTION_STEPS} steps. Possible infinite loop.`;
+         const limitStep: RunStep = {
+             id: `step-limit`,
+             nodeId: 'system',
+             nodeLabel: 'System Safety',
+             status: 'failed',
+             startTime: new Date().toISOString(),
+             endTime: new Date().toISOString(),
+             input: {},
+             output: {},
+             logs: [errorMsg]
+         };
+         currentRunLog = {
+             ...currentRunLog,
+             status: 'failed',
+             steps: [...currentRunLog.steps, limitStep]
+         };
+         onStepUpdate(currentRunLog);
+         return currentRunLog;
+    }
+    stepsExecuted++;
+
     // 1. Mark step as pending
     const stepId = `step-${Date.now()}`;
     const pendingStep: RunStep = {

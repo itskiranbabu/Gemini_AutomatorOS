@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Workflow } from '../types';
-import { Play, Edit, Trash2, Activity, Loader2 } from 'lucide-react';
+import { Play, Edit, Trash2, Activity, Loader2, Copy } from 'lucide-react';
 import { useAutomator } from '../store/AutomatorContext';
 
 interface WorkflowListProps {
@@ -9,9 +9,10 @@ interface WorkflowListProps {
   onSelect: (workflow: Workflow) => void;
   onRun: (workflow: Workflow) => void;
   onDelete: (id: string) => void;
+  onDuplicate: (workflow: Workflow) => void;
 }
 
-export const WorkflowList: React.FC<WorkflowListProps> = ({ workflows, onSelect, onRun, onDelete }) => {
+export const WorkflowList: React.FC<WorkflowListProps> = ({ workflows, onSelect, onRun, onDelete, onDuplicate }) => {
   // We use the context hook to get access to all runs for dynamic stats calculation
   const { runs } = useAutomator();
 
@@ -141,6 +142,13 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({ workflows, onSelect,
                         title="Edit Workflow"
                     >
                         <Edit size={16} />
+                    </button>
+                    <button 
+                        onClick={() => onDuplicate(wf)}
+                        className="p-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-300 transition-colors"
+                        title="Duplicate Workflow"
+                    >
+                        <Copy size={16} />
                     </button>
                     <button 
                         onClick={() => onDelete(wf.id)}

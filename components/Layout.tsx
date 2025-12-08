@@ -1,15 +1,17 @@
 
-import React from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { 
   LayoutDashboard, Zap, Activity, Settings, 
-  PlusCircle, Command, Book, FileText, Library, Loader2
+  PlusCircle, Command, Book, FileText, Library, Loader2, Upload
 } from 'lucide-react';
 import { useAutomator } from '../store/AutomatorContext';
+import { CommandPalette } from './CommandPalette';
 
 interface LayoutProps {
   children: React.ReactNode;
   activeView: string;
   onChangeView: (view: string) => void;
+  onImport?: (file: File) => void;
 }
 
 const NavItem = ({ icon: Icon, label, active, onClick, badge }: any) => (
@@ -29,15 +31,39 @@ const NavItem = ({ icon: Icon, label, active, onClick, badge }: any) => (
   </button>
 );
 
-export const Layout: React.FC<LayoutProps> = ({ children, activeView, onChangeView }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, activeView, onChangeView, onImport }) => {
   const { runs, profile } = useAutomator();
   const activeRunsCount = runs.filter(r => r.status === 'running').length;
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Command Palette State
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+            e.preventDefault();
+            setShowCommandPalette(prev => !prev);
+        }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && onImport) {
+        onImport(file);
+    }
+    // Reset input
+    if (e.target) e.target.value = '';
+  };
 
   return (
     <div className="flex h-screen bg-dark-950 text-slate-200 selection:bg-brand-500/30">
       {/* Sidebar */}
       <aside className="w-64 flex flex-col border-r border-slate-800/50 bg-dark-900/50 backdrop-blur-xl">
-        <div className="p-6 flex items-center space-x-3">
+        <div className="p-6 flex items-center space-x-3 cursor-pointer" onClick={() => onChangeView('dashboard')}>
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center shadow-lg shadow-brand-500/20">
             <Zap className="text-white" size={18} fill="currentColor" />
           </div>
@@ -118,11 +144,31 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onChangeVi
       <main className="flex-1 flex flex-col overflow-hidden relative">
         {/* Header */}
         <header className="h-16 border-b border-slate-800/50 flex items-center justify-between px-8 bg-dark-950/80 backdrop-blur z-10">
-          <div className="flex items-center text-slate-500 text-sm">
+          <button 
+            onClick={() => setShowCommandPalette(true)}
+            className="flex items-center text-slate-500 text-sm hover:text-slate-300 transition-colors bg-slate-900/50 px-3 py-1.5 rounded-lg border border-slate-800"
+          >
             <Command size={14} className="mr-2" />
-            <span>Cmd + K to search...</span>
-          </div>
+            <span>Search (Cmd + K)</span>
+          </button>
+
           <div className="flex items-center space-x-4">
+            <input 
+                type="file" 
+                ref={fileInputRef} 
+                className="hidden" 
+                accept=".json" 
+                onChange={handleFileChange}
+            />
+            {onImport && (
+                <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-700"
+                >
+                <Upload size={16} />
+                <span>Import</span>
+                </button>
+            )}
             <button 
                 onClick={() => onChangeView('create')}
                 className="flex items-center space-x-2 bg-brand-600 hover:bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-brand-900/20"
@@ -137,6 +183,13 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onChangeVi
           {children}
         </div>
       </main>
+
+      {/* Global Command Palette */}
+      <CommandPalette 
+         isOpen={showCommandPalette} 
+         onClose={() => setShowCommandPalette(false)}
+         onNavigate={onChangeView} 
+      />
     </div>
   );
 };

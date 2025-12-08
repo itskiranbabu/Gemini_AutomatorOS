@@ -18,6 +18,7 @@ import { AutomatorProvider, useAutomator } from './store/AutomatorContext';
 import { ToastProvider, useToast } from './store/ToastContext';
 import { AuthProvider, useAuth } from './store/AuthContext';
 import { optimizeWorkflow } from './services/geminiService';
+import { validateWorkflow } from './lib/workflowUtils';
 
 function AutomatorDashboard() {
   const [activeView, setActiveView] = useState('dashboard');
@@ -70,6 +71,13 @@ function AutomatorDashboard() {
   const handleSaveWorkflow = () => {
     if (!currentWorkflow) return;
     
+    // Validation
+    const validation = validateWorkflow(currentWorkflow.nodes, currentWorkflow.edges);
+    if (!validation.isValid) {
+        addToast('error', `Validation Failed: ${validation.errors[0]}`, 4000);
+        return;
+    }
+
     if (currentWorkflow.id) {
         // Edit Mode: Update existing
         const existing = workflows.find(w => w.id === currentWorkflow.id);
@@ -111,7 +119,65 @@ function AutomatorDashboard() {
       }
   };
 
-  // 5. Update Workflow nodes in Builder
+  // 5. Duplicate Workflow
+  const handleDuplicateWorkflow = (workflow: Workflow) => {
+      const newWorkflow: Workflow = {
+          ...workflow,
+          id: `wf-${Date.now()}`,
+          name: `${workflow.name} (Copy)`,
+          status: 'draft',
+          createdAt: new Date().toISOString(),
+          stats: { runs: 0, successRate: 0 }
+      };
+      addWorkflow(newWorkflow);
+      addToast('success', 'Workflow duplicated successfully');
+  };
+
+  // 6. Import Workflow
+  const handleImportWorkflow = (file: File) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+          try {
+              const content = e.target?.result as string;
+              const data = JSON.parse(content);
+              
+              if (!data.nodes || !Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
+                  throw new Error("Invalid workflow file format");
+              }
+
+              const newWorkflow: Workflow = {
+                  id: `wf-${Date.now()}`,
+                  name: data.name ? `${data.name} (Imported)` : 'Imported Workflow',
+                  description: data.description || 'Imported from JSON',
+                  status: 'draft',
+                  createdAt: new Date().toISOString(),
+                  nodes: data.nodes,
+                  edges: data.edges,
+                  stats: { runs: 0, successRate: 0 }
+              };
+              
+              addWorkflow(newWorkflow);
+              addToast('success', 'Workflow imported successfully');
+              
+              // Optionally open it
+              setCurrentWorkflow({
+                  id: newWorkflow.id,
+                  name: newWorkflow.name,
+                  nodes: newWorkflow.nodes,
+                  edges: newWorkflow.edges,
+                  explanation: newWorkflow.description
+              });
+              setActiveView('builder');
+
+          } catch (err: any) {
+              addToast('error', `Import failed: ${err.message}`);
+          }
+      };
+      reader.readAsText(file);
+  };
+
+
+  // 7. Update Workflow nodes in Builder
   const handleUpdateNodes = (updatedNodes: WorkflowNode[]) => {
       if (currentWorkflow) {
           setCurrentWorkflow({
@@ -121,7 +187,7 @@ function AutomatorDashboard() {
       }
   };
   
-  // 6. Update Edges in Builder
+  // 8. Update Edges in Builder
   const handleUpdateEdges = (updatedEdges: WorkflowEdge[]) => {
       if (currentWorkflow) {
           setCurrentWorkflow({
@@ -131,16 +197,23 @@ function AutomatorDashboard() {
       }
   };
 
-  // 7. Initiate Run (Opens Modal)
+  // 9. Initiate Run (Opens Modal)
   const handleInitiateRun = (workflow: Workflow) => {
       setWorkflowToRun(workflow);
       setRunModalOpen(true);
   };
 
-  // 8. Execute Run (Called from Modal)
+  // 10. Execute Run (Called from Modal)
   const handleExecuteRun = async (payload: any) => {
     setRunModalOpen(false);
     if (!workflowToRun) return;
+
+    // Validation before run
+    const validation = validateWorkflow(workflowToRun.nodes, workflowToRun.edges);
+    if (!validation.isValid) {
+        addToast('error', `Cannot run: ${validation.errors[0]}`);
+        return;
+    }
 
     addToast('loading', `Starting ${workflowToRun.name}...`, 2000);
 
@@ -172,6 +245,12 @@ function AutomatorDashboard() {
   // Handle run inside builder (Simulate/Test)
   const handleTestRunInBuilder = () => {
       if (currentWorkflow) {
+          const validation = validateWorkflow(currentWorkflow.nodes, currentWorkflow.edges);
+          if (!validation.isValid) {
+                addToast('error', `Cannot run: ${validation.errors[0]}`);
+                return;
+          }
+
           // Construct a temporary workflow object to run
           const tempWf: Workflow = {
               id: currentWorkflow.id || `temp-${Date.now()}`,
@@ -214,7 +293,7 @@ function AutomatorDashboard() {
       setActiveView('run_detail');
   }
 
-  // 9. Integration Toggle
+  // 11. Integration Toggle
   const handleToggleIntegration = (id: string) => {
     setConnectingId(id);
     // Simulate OAuth Delay
@@ -258,6 +337,7 @@ function AutomatorDashboard() {
                 }}
                 onRun={handleInitiateRun}
                 onDelete={handleDeleteWorkflow}
+                onDuplicate={handleDuplicateWorkflow}
             />
           );
 
@@ -451,7 +531,7 @@ function AutomatorDashboard() {
   };
 
   return (
-    <Layout activeView={activeView} onChangeView={setActiveView}>
+    <Layout activeView={activeView} onChangeView={setActiveView} onImport={handleImportWorkflow}>
       {renderContent()}
       
       {/* Run Configuration Modal */}
