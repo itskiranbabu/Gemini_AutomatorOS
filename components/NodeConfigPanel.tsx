@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { X, Save, Trash2, Info, Code, Braces } from 'lucide-react';
 import { WorkflowNode, NodeType } from '../types';
@@ -75,6 +74,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, nodes, o
       if (svc.includes('typeform')) return ['formId', 'answers', 'email'];
       if (svc.includes('github')) return ['repo', 'pr_number', 'branch'];
       if (svc.includes('gemini') || svc.includes('ai')) return ['aiResult', 'summary'];
+      if (svc.includes('http')) return ['status', 'data'];
       return ['id', 'timestamp'];
   }
 
@@ -90,6 +90,25 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, nodes, o
   // Helper to render form fields based on service type
   const renderFormFields = () => {
     const s = service.toLowerCase();
+
+    // 0. HTTP Request
+    if (s === 'http') {
+        return (
+            <>
+                <SelectField 
+                    label="Method" 
+                    value={config.method} 
+                    onChange={(v) => updateConfigField('method', v)} 
+                    options={['GET', 'POST', 'PUT', 'DELETE', 'PATCH']} 
+                />
+                <InputField label="URL" value={config.url} onChange={(v) => updateConfigField('url', v)} placeholder="https://api.example.com/v1/resource" />
+                {config.method !== 'GET' && config.method !== 'DELETE' && (
+                    <TextAreaField label="JSON Body" value={config.body} onChange={(v) => updateConfigField('body', v)} placeholder='{ "key": "{{value}}" }' />
+                )}
+                <TextAreaField label="Headers (JSON)" value={config.headers} onChange={(v) => updateConfigField('headers', v)} placeholder='{ "Authorization": "Bearer key" }' />
+            </>
+        )
+    }
 
     // 1. Gmail / Email
     if (s.includes('gmail') || s.includes('mail')) {
@@ -165,6 +184,26 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, nodes, o
         )
     }
 
+    // 6. Webhook (Trigger)
+    if (s === 'webhook') {
+        return (
+            <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Webhook URL</label>
+                <div className="flex items-center space-x-2">
+                    <code className="flex-1 bg-slate-900 px-2 py-1.5 rounded text-xs text-blue-300 font-mono break-all border border-slate-700">
+                        https://api.automator.os/hooks/wk_{node.id.slice(0,8)}
+                    </code>
+                    <button className="text-xs bg-slate-800 px-2 py-1.5 rounded text-slate-300 hover:text-white border border-slate-700 transition-colors">
+                        Copy
+                    </button>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-2">
+                    Send a POST request to this URL to trigger this workflow.
+                </p>
+            </div>
+        )
+    }
+
     // Default Fallback
     return (
       <div className="text-center py-4 text-slate-500 text-sm bg-slate-800/30 rounded-lg">
@@ -224,6 +263,8 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ node, nodes, o
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-sm text-slate-200 focus:outline-none focus:border-brand-500"
                  >
                      <option value="system">System</option>
+                     <option value="http">HTTP Request</option>
+                     <option value="webhook">Webhook (Trigger)</option>
                      <option value="gmail">Gmail</option>
                      <option value="slack">Slack</option>
                      <option value="shopify">Shopify</option>

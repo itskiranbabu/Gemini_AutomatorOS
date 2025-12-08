@@ -106,6 +106,81 @@ const processNode = async (node: WorkflowNode, input: any): Promise<{ output: an
       } else {
 
         switch (node.service.toLowerCase()) {
+            case 'http':
+                logs.push(`Preparing ${finalConfig.method || 'GET'} request to ${finalConfig.url}...`);
+                try {
+                    // Try parsing body if it exists and isn't GET/DELETE
+                    let body = undefined;
+                    if (finalConfig.method !== 'GET' && finalConfig.method !== 'DELETE' && finalConfig.body) {
+                        try {
+                            body = typeof finalConfig.body === 'string' ? finalConfig.body : JSON.stringify(finalConfig.body);
+                        } catch (e) {
+                            logs.push(`⚠️ Warning: Body is not valid JSON, sending as string.`);
+                            body = finalConfig.body;
+                        }
+                    }
+
+                    // Try parsing headers
+                    let headers = {};
+                    if (finalConfig.headers) {
+                        try {
+                            headers = typeof finalConfig.headers === 'string' ? JSON.parse(finalConfig.headers) : finalConfig.headers;
+                        } catch (e) {
+                             logs.push(`⚠️ Warning: Headers are not valid JSON.`);
+                        }
+                    }
+
+                    // Client-side fetch limitation: CORS
+                    // In a real SaaS, this runs server-side (Node.js/Go) where CORS doesn't apply.
+                    // For this demo, we can only fetch CORS-enabled APIs.
+                    const response = await fetch(finalConfig.url, {
+                        method: finalConfig.method || 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...headers
+                        },
+                        body
+                    });
+
+                    logs.push(`Response Status: ${response.status}`);
+                    
+                    let responseData;
+                    const contentType = response.headers.get("content-type");
+                    if (contentType && contentType.includes("application/json")) {
+                        responseData = await response.json();
+                    } else {
+                        responseData = await response.text();
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${JSON.stringify(responseData)}`);
+                    }
+
+                    output = { ...output, data: responseData, status: response.status };
+                } catch (e: any) {
+                    // If it's a CORS error, simulate success for demo purposes if URL is dummy
+                    if (e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
+                         logs.push(`⚠️ Network/CORS Error detected (Client-side limitation).`);
+                         if (finalConfig.url.includes('api.example.com') || finalConfig.url.includes('localhost')) {
+                             logs.push(`Simulating success for test/dummy URL.`);
+                             output = { ...output, data: { success: true, simulated: true }, status: 200 };
+                         } else {
+                             throw e;
+                         }
+                    } else {
+                        throw e;
+                    }
+                }
+            break;
+
+            case 'webhook':
+                 logs.push(`Waiting for webhook event...`);
+                 // In a real execution, this node would likely be a Trigger that already fired
+                 // If it's used mid-flow, it might be a "Wait for Callback"
+                 logs.push(`Webhook event received (Simulated).`);
+                 output = { ...output, webhookBody: { event: 'ping' } };
+            break;
+
             case 'gmail':
             if (node.type === NodeType.ACTION) {
                 logs.push(`Connecting to SMTP server...`, `Authenticating...`);

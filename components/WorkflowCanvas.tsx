@@ -1,8 +1,7 @@
 
-
 import React, { useEffect, useState, useRef } from 'react';
 import { WorkflowNode, WorkflowEdge, NodeType, RunLog } from '../types';
-import { Zap, Mail, MessageSquare, ShoppingCart, Database, Brain, Play, Save, Settings2, Loader2, CheckCircle2, XCircle, GitFork, Plus, Trash2, X, FileCode } from 'lucide-react';
+import { Zap, Mail, MessageSquare, ShoppingCart, Database, Brain, Play, Save, Settings2, Loader2, CheckCircle2, XCircle, GitFork, Plus, Trash2, X, FileCode, Globe } from 'lucide-react';
 import { NodeConfigPanel } from './NodeConfigPanel';
 
 interface WorkflowCanvasProps {
@@ -20,6 +19,7 @@ const getIcon = (service: string, type: NodeType) => {
   if (type === NodeType.CONDITION) return GitFork;
   if (type === NodeType.SCRIPT) return FileCode;
   const s = service.toLowerCase();
+  if (s === 'http' || s === 'webhook') return Globe;
   if (s.includes('gmail') || s.includes('mail')) return Mail;
   if (s.includes('slack') || s.includes('discord')) return MessageSquare;
   if (s.includes('shopify') || s.includes('stripe')) return ShoppingCart;
