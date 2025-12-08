@@ -2,7 +2,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { 
   LayoutDashboard, Zap, Activity, Settings, 
-  PlusCircle, Command, Book, FileText, Library, Loader2, Upload
+  PlusCircle, Command, Book, FileText, Library, Loader2, Upload, Menu, X
 } from 'lucide-react';
 import { useAutomator } from '../store/AutomatorContext';
 import { CommandPalette } from './CommandPalette';
@@ -38,6 +38,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onChangeVi
   
   // Command Palette State
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -59,43 +60,62 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onChangeVi
     if (e.target) e.target.value = '';
   };
 
+  const handleNavClick = (view: string) => {
+      onChangeView(view);
+      setIsSidebarOpen(false); // Close sidebar on mobile on nav
+  };
+
   return (
     <div className="flex h-screen bg-dark-950 text-slate-200 selection:bg-brand-500/30">
+      
+      {/* Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-64 flex flex-col border-r border-slate-800/50 bg-dark-900/50 backdrop-blur-xl">
-        <div className="p-6 flex items-center space-x-3 cursor-pointer" onClick={() => onChangeView('dashboard')}>
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center shadow-lg shadow-brand-500/20">
-            <Zap className="text-white" size={18} fill="currentColor" />
-          </div>
-          <span className="text-lg font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
-            AutomatorOS
-          </span>
+      <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 flex flex-col border-r border-slate-800/50 bg-dark-900/95 lg:bg-dark-900/50 backdrop-blur-xl transition-transform duration-300 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+        <div className="p-6 flex items-center justify-between lg:justify-start space-x-3">
+            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => handleNavClick('dashboard')}>
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center shadow-lg shadow-brand-500/20">
+                    <Zap className="text-white" size={18} fill="currentColor" />
+                </div>
+                <span className="text-lg font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
+                    AutomatorOS
+                </span>
+            </div>
+            <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-slate-400 hover:text-white">
+                <X size={24} />
+            </button>
         </div>
 
-        <nav className="flex-1 px-3 space-y-1 mt-4">
+        <nav className="flex-1 px-3 space-y-1 mt-4 overflow-y-auto custom-scrollbar">
           <NavItem 
             icon={LayoutDashboard} 
             label="Dashboard" 
             active={activeView === 'dashboard'} 
-            onClick={() => onChangeView('dashboard')} 
+            onClick={() => handleNavClick('dashboard')} 
           />
           <NavItem 
             icon={Library} 
             label="Templates" 
             active={activeView === 'templates'} 
-            onClick={() => onChangeView('templates')} 
+            onClick={() => handleNavClick('templates')} 
           />
           <NavItem 
             icon={Zap} 
             label="Workflows" 
             active={activeView === 'workflows'} 
-            onClick={() => onChangeView('workflows')} 
+            onClick={() => handleNavClick('workflows')} 
           />
            <NavItem 
             icon={FileText} 
             label="Runs & Logs" 
             active={activeView === 'runs'} 
-            onClick={() => onChangeView('runs')}
+            onClick={() => handleNavClick('runs')}
             badge={activeRunsCount > 0 && (
                 <span className="bg-blue-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center">
                     <Loader2 size={8} className="animate-spin mr-1"/>
@@ -107,20 +127,20 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onChangeVi
             icon={Activity} 
             label="Integrations" 
             active={activeView === 'integrations'} 
-            onClick={() => onChangeView('integrations')} 
+            onClick={() => handleNavClick('integrations')} 
           />
            <div className="pt-4 mt-4 border-t border-slate-800/50">
              <NavItem 
                 icon={Book} 
                 label="Architecture / Docs" 
                 active={activeView === 'docs'} 
-                onClick={() => onChangeView('docs')} 
+                onClick={() => handleNavClick('docs')} 
               />
               <NavItem 
                 icon={Settings} 
                 label="Settings" 
                 active={activeView === 'settings'} 
-                onClick={() => onChangeView('settings')} 
+                onClick={() => handleNavClick('settings')} 
               />
            </div>
         </nav>
@@ -143,16 +163,25 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onChangeVi
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden relative">
         {/* Header */}
-        <header className="h-16 border-b border-slate-800/50 flex items-center justify-between px-8 bg-dark-950/80 backdrop-blur z-10">
-          <button 
-            onClick={() => setShowCommandPalette(true)}
-            className="flex items-center text-slate-500 text-sm hover:text-slate-300 transition-colors bg-slate-900/50 px-3 py-1.5 rounded-lg border border-slate-800"
-          >
-            <Command size={14} className="mr-2" />
-            <span>Search (Cmd + K)</span>
-          </button>
+        <header className="h-16 border-b border-slate-800/50 flex items-center justify-between px-4 lg:px-8 bg-dark-950/80 backdrop-blur z-10">
+          <div className="flex items-center gap-3">
+              <button 
+                onClick={() => setIsSidebarOpen(true)}
+                className="lg:hidden text-slate-400 hover:text-white p-2"
+              >
+                  <Menu size={24} />
+              </button>
+              
+              <button 
+                onClick={() => setShowCommandPalette(true)}
+                className="flex items-center text-slate-500 text-sm hover:text-slate-300 transition-colors bg-slate-900/50 px-3 py-1.5 rounded-lg border border-slate-800 hidden sm:flex"
+              >
+                <Command size={14} className="mr-2" />
+                <span>Search (Cmd + K)</span>
+              </button>
+          </div>
 
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2 sm:space-x-4">
             <input 
                 type="file" 
                 ref={fileInputRef} 
@@ -163,7 +192,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onChangeVi
             {onImport && (
                 <button 
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-700"
+                    className="hidden sm:flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-700"
                 >
                 <Upload size={16} />
                 <span>Import</span>
@@ -171,15 +200,15 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onChangeVi
             )}
             <button 
                 onClick={() => onChangeView('create')}
-                className="flex items-center space-x-2 bg-brand-600 hover:bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-brand-900/20"
+                className="flex items-center space-x-2 bg-brand-600 hover:bg-brand-500 text-white px-3 py-2 sm:px-4 sm:py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-brand-900/20"
             >
               <PlusCircle size={16} />
-              <span>New Workflow</span>
+              <span className="hidden sm:inline">New Workflow</span>
             </button>
           </div>
         </header>
 
-        <div className="flex-1 overflow-auto p-8 relative">
+        <div className="flex-1 overflow-auto p-4 lg:p-8 relative scroll-smooth">
           {children}
         </div>
       </main>
@@ -188,7 +217,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onChangeVi
       <CommandPalette 
          isOpen={showCommandPalette} 
          onClose={() => setShowCommandPalette(false)}
-         onNavigate={onChangeView} 
+         onNavigate={(view) => {
+             onChangeView(view);
+             setIsSidebarOpen(false);
+         }} 
       />
     </div>
   );

@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Database, Server, Cpu, Globe, Layers, Lock, GitBranch, Code, FileCode, CheckCircle2 } from 'lucide-react';
+import { Database, Server, Cpu, Globe, Layers, Lock, GitBranch, Code, FileCode, CheckCircle2, Rocket } from 'lucide-react';
 import { DB_SCHEMA_SQL } from '../constants';
 import { TEMPORAL_WORKFLOW_EXAMPLE, ACTIVITY_EXAMPLE, CONNECTOR_SDK_EXAMPLE } from '../lib/backend-examples';
 
@@ -41,12 +41,21 @@ export const ArchitectureDocs: React.FC = () => {
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
           
           {/* Status Check */}
-          <div className="mb-8 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center space-x-3">
-             <CheckCircle2 className="text-emerald-400" />
-             <div>
-                 <h3 className="text-sm font-bold text-emerald-400">System Operational</h3>
-                 <p className="text-xs text-slate-400">All modules (Auth, Engine, AI, DB) are active and running in production mode.</p>
-             </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+            <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center space-x-3">
+                <CheckCircle2 className="text-emerald-400" />
+                <div>
+                    <h3 className="text-sm font-bold text-emerald-400">System Operational</h3>
+                    <p className="text-xs text-slate-400">Modules (Auth, Engine, AI, DB) active.</p>
+                </div>
+            </div>
+            <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center space-x-3">
+                <Rocket className="text-blue-400" />
+                <div>
+                    <h3 className="text-sm font-bold text-blue-400">Ready for Deployment</h3>
+                    <p className="text-xs text-slate-400">Codebase is production-optimized.</p>
+                </div>
+            </div>
           </div>
 
           {/* High Level Architecture */}
@@ -61,7 +70,7 @@ export const ArchitectureDocs: React.FC = () => {
                             <Globe className="text-blue-400" /> <span>Frontend Layer</span>
                         </div>
                         <p className="text-sm text-slate-400 leading-relaxed">
-                            Next.js application hosted on Vercel/Edge. Communicates via REST/RPC to the backend. 
+                            React SPA hosted on Vercel Edge. Communicates via REST/RPC to the backend. 
                             Handles Auth via Supabase Client.
                         </p>
                     </div>
@@ -91,7 +100,7 @@ export const ArchitectureDocs: React.FC = () => {
                         <div className="h-px bg-slate-700 flex-1 mx-4 relative">
                             <span className="absolute top-[-10px] left-1/2 -translate-x-1/2">HTTPS</span>
                         </div>
-                        <div className="bg-slate-800 px-3 py-1 rounded">Next.js App</div>
+                        <div className="bg-slate-800 px-3 py-1 rounded">React App</div>
                          <div className="h-px bg-slate-700 flex-1 mx-4 relative">
                             <span className="absolute top-[-10px] left-1/2 -translate-x-1/2">API</span>
                         </div>

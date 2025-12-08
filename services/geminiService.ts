@@ -1,21 +1,7 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { NodeType, WorkflowNode, WorkflowEdge, PromptResponse } from '../types';
 
-// Safe API Key access
-const getApiKey = () => {
-    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
-        return process.env.API_KEY;
-    }
-    // Fallback for Vercel/Next env injection if mapped differently
-    if (typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_API_KEY) {
-        return process.env.NEXT_PUBLIC_API_KEY;
-    }
-    return '';
-};
-
-const apiKey = getApiKey();
-const ai = new GoogleGenAI({ apiKey });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // System instruction to guide Gemini to act as an Automation Architect
 const SYSTEM_INSTRUCTION = `
@@ -36,11 +22,6 @@ Output Format: JSON only.
 
 export const generateWorkflowFromPrompt = async (userPrompt: string): Promise<PromptResponse | null> => {
   try {
-    if (!apiKey) {
-        console.error("Missing Gemini API Key");
-        throw new Error("API Key not configured");
-    }
-
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: userPrompt,
@@ -122,8 +103,6 @@ export const generateWorkflowFromPrompt = async (userPrompt: string): Promise<Pr
 
 export const explainWorkflow = async (nodes: WorkflowNode[], edges: WorkflowEdge[]): Promise<string> => {
   try {
-     if (!apiKey) return "API Key missing.";
-     
      // Minimize token usage by stripping heavy config
      const context = {
          nodes: nodes.map(n => ({ id: n.id, label: n.label, service: n.service, type: n.type, config: n.type === NodeType.CONDITION ? n.config : undefined })),
@@ -131,14 +110,17 @@ export const explainWorkflow = async (nodes: WorkflowNode[], edges: WorkflowEdge
      };
 
      const prompt = `
-       You are an expert technical writer. Analyze this automation workflow graph structure and write a concise, natural language summary (max 2 sentences).
+       You are an expert technical writer and automation engineer. 
+       Analyze the provided workflow graph structure (nodes and edges) and write a professional, natural language summary of what this automation does.
        
-       Logic handling:
-       - Identify the Trigger.
-       - If there are Condition nodes (branches), explain the decision logic clearly (e.g., "If X, then do Y, otherwise do Z").
-       - Mention the key actions performed.
+       Guidelines:
+       1. Identify the Trigger event that starts the process.
+       2. If there are Condition nodes (branches), explain the decision logic explicitly (e.g., "The system checks if X. If true, it does Y; otherwise, it does Z").
+       3. Identify any AI tasks (summarization, generation) and highlight the value they add.
+       4. Keep it concise (max 3-4 sentences). Use active voice.
+       5. Do not mention "Node IDs" or technical JSON fields. Focus on the user story.
        
-       Input JSON Graph:
+       Input Graph JSON:
        ${JSON.stringify(context)}
      `;
 
@@ -168,8 +150,6 @@ export const optimizeWorkflow = async (current: PromptResponse): Promise<PromptR
 // Execute a real AI task within a workflow run
 export const performAIAction = async (prompt: string, model: string = 'gemini-2.5-flash'): Promise<string> => {
     try {
-        if (!apiKey) return "Error: Missing API Key. Please configure NEXT_PUBLIC_API_KEY.";
-        
         // Use the specified model or default to flash
         const targetModel = model.includes('gemini') ? model : 'gemini-2.5-flash';
 

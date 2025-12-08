@@ -193,6 +193,48 @@ export const MOCK_TEMPLATES: Template[] = [
         { id: 'e4', source: '3', target: '5' },
         { id: 'e5', source: '5', target: '6' }
     ]
+  },
+  {
+    id: 'tmpl-8',
+    name: 'Legal Contract Review',
+    description: 'Analyze incoming email attachments for high-risk clauses using AI.',
+    category: 'Legal',
+    popularity: 4,
+    nodes: [
+        { id: '1', type: NodeType.TRIGGER, service: 'gmail', label: 'New Attachment', x: 50, y: 250, config: {} },
+        { id: '2', type: NodeType.AI, service: 'gemini', label: 'Analyze Risk', x: 300, y: 250, config: { prompt: "Identify liability clauses." } },
+        { id: '3', type: NodeType.CONDITION, service: 'system', label: 'High Risk?', x: 550, y: 250, config: { variable: 'riskLevel', operator: '==', threshold: 'HIGH' } },
+        { id: '4', type: NodeType.ACTION, service: 'slack', label: 'Alert Legal Team', x: 800, y: 150, config: {} },
+        { id: '5', type: NodeType.ACTION, service: 'dropbox', label: 'Save to Archive', x: 800, y: 350, config: {} }
+    ],
+    edges: [
+        { id: 'e1', source: '1', target: '2' },
+        { id: 'e2', source: '2', target: '3' },
+        { id: 'e3', source: '3', target: '4', label: 'true' },
+        { id: 'e4', source: '3', target: '5', label: 'false' }
+    ]
+  },
+  {
+    id: 'tmpl-9',
+    name: 'Social Media Auto-Response',
+    description: 'Monitor mentions, analyze sentiment, and auto-reply to questions.',
+    category: 'Marketing',
+    popularity: 5,
+    nodes: [
+        { id: '1', type: NodeType.TRIGGER, service: 'twitter', label: 'New Mention', x: 50, y: 250, config: {} },
+        { id: '2', type: NodeType.AI, service: 'gemini', label: 'Detect Intent', x: 300, y: 250, config: {} },
+        { id: '3', type: NodeType.CONDITION, service: 'system', label: 'Is Question?', x: 550, y: 250, config: { variable: 'intent', operator: '==', threshold: 'question' } },
+        { id: '4', type: NodeType.AI, service: 'gemini', label: 'Draft Reply', x: 800, y: 150, config: {} },
+        { id: '5', type: NodeType.ACTION, service: 'slack', label: 'Request Approval', x: 1050, y: 150, config: {} },
+        { id: '6', type: NodeType.ACTION, service: 'twitter', label: 'Like Tweet', x: 800, y: 350, config: {} }
+    ],
+    edges: [
+        { id: 'e1', source: '1', target: '2' },
+        { id: 'e2', source: '2', target: '3' },
+        { id: 'e3', source: '3', target: '4', label: 'true' },
+        { id: 'e4', source: '3', target: '6', label: 'false' },
+        { id: 'e5', source: '4', target: '5' }
+    ]
   }
 ];
 
